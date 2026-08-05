@@ -1,4 +1,4 @@
-import { LayoutDashboard, Briefcase, Trophy, Network, Wallet, UsersRound, Settings, UserPlus } from 'lucide-react'
+import { LayoutDashboard, Briefcase, Trophy, Network, Wallet, UsersRound, Settings, UserPlus, Building2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { Role } from '../../lib/types'
 
@@ -11,6 +11,7 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
+  { to: '/leads', label: 'Leads', icon: Building2 },
   { to: '/deals', label: 'Deals', icon: Briefcase },
   { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   { to: '/referrals', label: 'Referrals', icon: Network },

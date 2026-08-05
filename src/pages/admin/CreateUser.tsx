@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UserPlus, ShieldCheck } from 'lucide-react'
 import { db } from '../../lib/db'
@@ -19,7 +19,20 @@ export default function CreateUser() {
   const [role, setRole] = useState<Role>('seller')
   const [level, setLevel] = useState<Level>('L1')
   const [phone, setPhone] = useState('')
+  const [uid, setUid] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Generate a preview UID
+  function genUid() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    let s = ''
+    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)]
+    return s
+  }
+
+  // The actual UID is generated server-side by create_user().
+  // We show a preview here and fetch the real one after creation.
+  useEffect(() => { setUid(genUid()) }, [])
 
   async function save() {
     if (!full_name.trim() || !email.trim() || !password) {
@@ -80,6 +93,13 @@ export default function CreateUser() {
           <Field label="Phone">
             <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+39 333 1122334" autoComplete="tel" />
           </Field>
+          <div className="rounded-xl border border-line bg-ink-50 p-3">
+            <p className="text-2xs text-ink-400">UID (auto-generated)</p>
+            <p className="mt-1 font-mono text-lg tracking-[0.3em] font-semibold text-ink">
+              {uid || '— — — — — —'}
+            </p>
+            <p className="mt-1 text-2xs text-ink-400">Share this 6-character code with the user. Other sellers need it to unlock their contact details.</p>
+          </div>
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => navigate('/sellers')}>Cancel</Button>

@@ -25,6 +25,7 @@ function p(
     id, email, full_name, role, level, active: true,
     avatar_color: color(id.charCodeAt(2) || 0),
     avatar_url, phone, address, custom_commission_pct,
+    uid: id.replace(/[^a-z0-9]/gi, '').slice(2, 8).toUpperCase(),
     created_at: iso(now - daysAgo * day), updated_at: iso(now),
   }
 }
@@ -74,6 +75,7 @@ export const seedDeals: Deal[] = dealsSeed.map((d, i) => {
     id: 'd' + (i + 1),
     seller_id,
     lead_id: null,
+    opportunity_id: null,
     company,
     contact_name: contact,
     email: '',
@@ -119,6 +121,7 @@ export function blankProfile(partial: Partial<Profile> = {}): Profile {
     avatar_url: '',
     phone: '',
     address: '',
+    uid: '',
     custom_commission_pct: null,
     created_at: iso(now),
     updated_at: iso(now),
@@ -131,6 +134,7 @@ export function blankDeal(seller_id: string): Deal {
     id: uuid(),
     seller_id,
     lead_id: null,
+    opportunity_id: null,
     company: '',
     contact_name: '',
     email: '',

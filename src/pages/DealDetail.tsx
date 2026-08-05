@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Mail, Phone, Globe, MapPin, Building2, Pencil, Check, X,
-  Wallet, Clock, Hash, User as UserIcon, ChevronDown, Network,
+  Wallet, Clock, Hash, User as UserIcon, ChevronDown, Network, Unlock,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useAsync } from '../lib/hooks/useAsync'
@@ -14,6 +14,8 @@ import { Badge } from '../components/ui/Badge'
 import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { Dropdown } from '../components/ui/Dropdown'
+import { Modal } from '../components/ui/Modal'
+import { Input, Field } from '../components/ui/Input'
 import { DealModal } from '../components/DealModal'
 import { PageContainer } from '../components/layout/AppShell'
 import { useToast } from '../context/ToastContext'
@@ -49,9 +51,11 @@ export default function DealDetail() {
     return ref ? data.profiles.find((p) => p.id === ref.referrer_id) : undefined
   }, [deal, data])
   const [editOpen, setEditOpen] = useState(false)
+  const [contactsUnlocked, setContactsUnlocked] = useState(false)
 
   const canEdit = isAdmin || (deal?.status === 'pending_review')
   const canChangeStatus = isAdmin
+  const isOwner = user?.id === deal?.seller_id
 
   async function setStatus(s: DealStatus) {
     if (!deal) return
@@ -158,12 +162,14 @@ export default function DealDetail() {
           </Card>
 
           <Card>
-            <CardHeader title="Client & contact" desc="Details for cold / warm calls" />
+            <CardHeader title="Client & contact" desc="Details for cold / warm calls" action={
+              isAdmin && deal.opportunity_id ? <AdminUnlockButton onUnlock={() => setContactsUnlocked(true)} /> : undefined
+            } />
             <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
               <Info icon={<Building2 size={15} strokeWidth={1.75} />} label="Company" value={deal.company || '—'} />
-              <Info icon={<UserIcon size={15} strokeWidth={1.75} />} label="Contact" value={deal.contact_name || '—'} />
-              <Info icon={<Mail size={15} strokeWidth={1.75} />} label="Email" value={deal.email || '—'} href={`mailto:${deal.email}`} />
-              <Info icon={<Phone size={15} strokeWidth={1.75} />} label="Phone" value={deal.phone || '—'} href={`tel:${deal.phone}`} />
+              <Info icon={<UserIcon size={15} strokeWidth={1.75} />} label="Contact" value={deal.opportunity_id && !contactsUnlocked && !isOwner ? blurText(deal.contact_name) : (deal.contact_name || '—')} />
+              <Info icon={<Mail size={15} strokeWidth={1.75} />} label="Email" value={deal.opportunity_id && !contactsUnlocked && !isOwner ? blurText(deal.email) : (deal.email || '—')} href={!contactsUnlocked && !isOwner ? undefined : `mailto:${deal.email}`} />
+              <Info icon={<Phone size={15} strokeWidth={1.75} />} label="Phone" value={deal.opportunity_id && !contactsUnlocked && !isOwner ? blurText(deal.phone) : (deal.phone || '—')} href={!contactsUnlocked && !isOwner ? undefined : `tel:${deal.phone}`} />
               <Info icon={<Globe size={15} strokeWidth={1.75} />} label="Website" value={deal.website || '—'} href={deal.website ? `https://${deal.website}` : undefined} />
               <Info icon={<MapPin size={15} strokeWidth={1.75} />} label="Meeting place" value={deal.meeting_place || '—'} />
             </div>
@@ -206,7 +212,9 @@ export default function DealDetail() {
             <CardHeader title="Seller payout" action={<Wallet size={16} strokeWidth={1.75} className="text-ink-300" />} />
             {salePayout ? (() => {
               const total = salePayout.amount
-              const collectable = Math.min(Math.round((deal.collected_amount || 0) * (deal.commission_pct / 100)), total)
+              const collectable = deal.gross_value > 0
+                ? Math.min(Math.round(total * ((deal.collected_amount || 0) / deal.gross_value)), total)
+                : 0
               const paid = salePayout.paid_amount || 0
               const remaining = collectable - paid
               return (
@@ -318,5 +326,53 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
       <span className="text-2xs text-ink-400">{label}</span>
       <span className="text-sm font-medium">{value}</span>
     </div>
+  )
+}
+
+function blurText(text: string) {
+  if (!text) return '—'
+  if (text.length <= 2) return '••'
+  return text.slice(0, 2) + '••••' + text.slice(-2)
+}
+
+function AdminUnlockButton({ onUnlock }: { onUnlock: () => void }) {
+  const { user } = useAuth()
+  const { push } = useToast()
+  const [open, setOpen] = useState(false)
+  const [code, setCode] = useState('')
+  const [verifying, setVerifying] = useState(false)
+
+  async function verify() {
+    if (!code.trim()) return
+    setVerifying(true)
+    try {
+      if (user?.uid && code.toUpperCase().trim() === user.uid.toUpperCase()) {
+        onUnlock(); setOpen(false); setCode('')
+        push({ tone: 'success', title: 'Admin unlock' })
+      } else if (!user?.uid) {
+        onUnlock(); setOpen(false); setCode('')
+        push({ tone: 'success', title: 'Admin unlock' })
+      } else {
+        push({ tone: 'error', title: 'Invalid admin UID' })
+      }
+    } finally { setVerifying(false) }
+  }
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-2xs font-medium text-ink-500 hover:bg-ink-50 transition-colors">
+        <Unlock size={12} strokeWidth={1.75} /> Unlock
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Admin unlock" desc="Enter your admin UID to reveal contact details." size="sm"
+        footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={verify} disabled={verifying || !code.trim()}>Unlock</Button></>}
+      >
+        <Field label="Your admin UID" required>
+          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="AB12CD" maxLength={6}
+            className="text-center text-lg tracking-[0.3em] font-mono uppercase" autoFocus
+            onKeyDown={(e) => e.key === 'Enter' && verify()}
+          />
+        </Field>
+      </Modal>
+    </>
   )
 }

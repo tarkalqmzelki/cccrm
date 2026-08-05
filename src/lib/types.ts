@@ -11,6 +11,125 @@ export type DealStatus =
   | 'closed'
 export type PayoutStatus = 'pending' | 'paid' | 'cancelled'
 
+// ---- Leads / Opportunities module ----
+export type OppStatus =
+  | 'new' | 'researching' | 'contact_found' | 'contacted' | 'interested'
+  | 'meeting_scheduled' | 'proposal_sent' | 'negotiation' | 'won' | 'lost' | 'archived'
+
+export type ActivityType =
+  | 'note' | 'call' | 'email' | 'meeting' | 'message' | 'reminder' | 'upload' | 'status_change' | 'created'
+
+export type TaskStatusType = 'open' | 'in_progress' | 'done' | 'cancelled'
+
+export const OPP_STATUS_META: Record<OppStatus, { label: string; tone: 'neutral' | 'info' | 'warn' | 'pos' | 'neg' }> = {
+  new: { label: 'New', tone: 'info' },
+  researching: { label: 'Researching', tone: 'neutral' },
+  contact_found: { label: 'Contact Found', tone: 'neutral' },
+  contacted: { label: 'Contacted', tone: 'warn' },
+  interested: { label: 'Interested', tone: 'warn' },
+  meeting_scheduled: { label: 'Meeting Scheduled', tone: 'info' },
+  proposal_sent: { label: 'Proposal Sent', tone: 'info' },
+  negotiation: { label: 'Negotiation', tone: 'warn' },
+  won: { label: 'Won', tone: 'pos' },
+  lost: { label: 'Lost', tone: 'neg' },
+  archived: { label: 'Archived', tone: 'neutral' },
+}
+
+export const OPP_STATUSES = Object.keys(OPP_STATUS_META) as OppStatus[]
+
+export interface Company {
+  id: string
+  name: string
+  website: string
+  domain: string
+  vat_number: string
+  industry: string
+  description: string
+  address: string
+  logo_url: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Contact {
+  id: string
+  company_id: string
+  full_name: string
+  email: string
+  phone: string
+  role: string
+  linkedin: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ServiceItem {
+  id: string
+  name: string
+  slug: string
+  is_custom: boolean
+  created_by: string | null
+  created_at: string
+}
+
+export interface Opportunity {
+  id: string
+  company_id: string
+  service_id: string
+  owner_id: string
+  title: string
+  status: OppStatus
+  priority: 'low' | 'medium' | 'high'
+  est_revenue: number
+  next_follow_up: string | null
+  notes: string
+  converted_deal_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Activity {
+  id: string
+  opportunity_id: string
+  company_id: string
+  actor_id: string | null
+  type: ActivityType
+  title: string
+  description: string
+  old_status: OppStatus | null
+  new_status: OppStatus | null
+  created_at: string
+}
+
+export interface Task {
+  id: string
+  opportunity_id: string
+  assignee_id: string | null
+  title: string
+  description: string
+  status: TaskStatusType
+  due_date: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CompanyNote {
+  id: string
+  company_id: string
+  author_id: string | null
+  body: string
+  created_at: string
+}
+
+export interface OpportunityNote {
+  id: string
+  opportunity_id: string
+  author_id: string | null
+  body: string
+  created_at: string
+}
+
 export interface Profile {
   id: string
   email: string
@@ -22,6 +141,7 @@ export interface Profile {
   avatar_url: string
   phone: string
   address: string
+  uid: string
   custom_commission_pct: number | null
   created_at: string
   updated_at: string
@@ -54,6 +174,7 @@ export interface Deal {
   id: string
   seller_id: string
   lead_id: string | null
+  opportunity_id: string | null
   company: string
   contact_name: string
   email: string

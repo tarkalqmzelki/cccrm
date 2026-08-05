@@ -14,6 +14,9 @@ import Payouts from './pages/Payouts'
 import Sellers from './pages/admin/Sellers'
 import SettingsPage from './pages/admin/Settings'
 import CreateUser from './pages/admin/CreateUser'
+import Leads from './pages/Leads'
+import CompanyDetail from './pages/CompanyDetail'
+import OpportunityDetail from './pages/OpportunityDetail'
 import type { Role } from './lib/types'
 
 function Protected({ children, roles }: { children: ReactNode; roles?: Role[] }) {
@@ -40,6 +43,9 @@ function Shell() {
     <AppShell>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/leads" element={<Leads />} />
+        <Route path="/leads/:id" element={<CompanyDetail />} />
+        <Route path="/leads/opp/:id" element={<OpportunityDetail />} />
         <Route path="/deals" element={<Deals />} />
         <Route path="/deals/:id" element={<DealDetail />} />
         <Route path="/leaderboard" element={<Leaderboard />} />

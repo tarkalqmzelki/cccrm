@@ -55,10 +55,9 @@ export default function Payouts() {
   const totalPaid = rows.reduce((s, p) => s + (p.paid_amount || 0), 0)
   const totalCollectable = rows.reduce((s, p) => {
     const d = p.deal_id ? dealMap[p.deal_id] : null
-    if (!d) return s + (p.amount - (p.paid_amount || 0))
-    const rate = p.payout_type === 'referral' ? 5 : d.commission_pct
-    const collectable = Math.min(Math.round((d.collected_amount || 0) * (rate / 100)), p.amount)
-    return s + collectable
+    if (!d || d.gross_value <= 0) return s
+    const ratio = (d.collected_amount || 0) / d.gross_value
+    return s + Math.min(Math.round(p.amount * ratio), p.amount)
   }, 0)
   const totalExpected = rows.reduce((s, p) => s + p.amount, 0)
 
@@ -96,11 +95,11 @@ export default function Payouts() {
 
   function getCollectable(p: Payout): number {
     const d = p.deal_id ? dealMap[p.deal_id] : null
-    if (!d) return p.amount - (p.paid_amount || 0)
-    const rate = p.payout_type === 'referral'
-      ? 5 // approximate — the DB trigger computes the exact rate
-      : d.commission_pct
-    return Math.min(Math.round((d.collected_amount || 0) * (rate / 100)), p.amount)
+    if (!d || d.gross_value <= 0) return 0
+    // collectable = payout total * (collected / gross)
+    // This uses the payout's actual amount (which is always correct per current level)
+    const ratio = (d.collected_amount || 0) / d.gross_value
+    return Math.min(Math.round(p.amount * ratio), p.amount)
   }
 
   const columns: Column<Payout>[] = [

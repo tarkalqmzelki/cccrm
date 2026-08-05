@@ -101,6 +101,9 @@ export default function Sellers() {
       const lvl = boardMap[p.id]?.level ?? 'L1'
       return <Badge tone="neutral">{lvl}{p.custom_commission_pct != null ? ' *' : ''}</Badge>
     } },
+    { key: 'uid', header: 'UID', cell: (p) => (
+      <span className="font-mono text-2xs tracking-wider text-ink-500">{p.uid || '—'}</span>
+    ) },
     { key: 'commission', header: 'Commission', align: 'right', cell: (p) => (
       <span className="num text-sm text-ink-600">{boardMap[p.id]?.commission ?? 0}%</span>
     ) },
@@ -230,6 +233,12 @@ function UserModal({ open, profile, settings, onClose, onSaved }: { open: boolea
           <Field label="Phone">
             <Input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="+39 333 1122334" autoComplete="tel" />
           </Field>
+          {isEdit && form.uid && (
+            <div className="rounded-xl border border-line bg-ink-50 p-3">
+              <p className="text-2xs text-ink-400">UID (for contact unlock)</p>
+              <p className="mt-1 font-mono text-lg tracking-[0.3em] font-semibold">{form.uid}</p>
+            </div>
+          )}
         </div>
         <Field label="Address">
           <Input value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Via Roma 12, Milano" />
