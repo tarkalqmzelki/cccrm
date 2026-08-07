@@ -136,7 +136,10 @@ export function leaderboard(
   for (const d of deals) {
     const r = rows[d.seller_id]
     if (!r) continue
-    r.deals += 1
+    // Only count approved/closed deals in the leaderboard
+    if (d.status === 'closed' || d.status === 'approved') {
+      r.deals += 1
+    }
     if (d.status === 'closed') r.closed += 1
   }
   return Object.values(rows)

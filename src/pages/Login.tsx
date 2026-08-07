@@ -36,10 +36,8 @@ export default function Login() {
     }
   }
 
-  function fillAdmin() {
+  function switchToAdmin() {
     setMode('admin')
-    setEmail('admin@calistaconcept.eu')
-    setPassword('admin123')
   }
 
   return (
@@ -55,8 +53,8 @@ export default function Login() {
           className="w-full max-w-[400px]"
         >
           <div className="mb-8 flex flex-col items-center text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-ink text-white text-lg font-semibold">C</div>
-            <h1 className="mt-4 text-xl font-semibold">Calista Concept</h1>
+            <img src="https://kappa.lol/FAHnNi" alt="Calista Concept" className="h-16 w-auto mb-4" />
+            <h1 className="text-xl font-semibold">Calista Concept</h1>
             <p className="mt-1 text-sm text-ink-400">Referrals & Revenue Platform</p>
           </div>
 
@@ -65,9 +63,8 @@ export default function Login() {
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className={`relative flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium capitalize transition-colors ${
-                  mode === m ? 'text-white' : 'text-ink-500 hover:text-ink'
-                }`}
+                className={`relative flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium capitalize transition-colors ${mode === m ? 'text-white' : 'text-ink-500 hover:text-ink'
+                  }`}
               >
                 {mode === m && (
                   <motion.span layoutId="login-mode" className="absolute inset-0 rounded-lg bg-ink" transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} />
@@ -90,7 +87,7 @@ export default function Login() {
                   autoFocus
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={mode === 'admin' ? 'admin@calistaconcept.eu' : 'you@calistaconcept.eu'}
+                  placeholder={mode === 'admin' ? 'email' : 'email'}
                   className="pl-9"
                   autoComplete="email"
                 />
@@ -126,7 +123,7 @@ export default function Login() {
                 Are you a seller or headhunter? Switch
               </button>
             ) : (
-              <button type="button" onClick={fillAdmin} className="block w-full text-center text-2xs text-ink-400 hover:text-ink-600 transition-colors">
+              <button type="button" onClick={switchToAdmin} className="block w-full text-center text-2xs text-ink-400 hover:text-ink-600 transition-colors">
                 Admin? Sign in here
               </button>
             )}

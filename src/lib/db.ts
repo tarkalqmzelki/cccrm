@@ -3,6 +3,7 @@ import { uuid } from './uuid'
 import type {
   Profile, Referral, Lead, Deal, Payout, Settings,
   Company, Contact, Opportunity, Activity, Task, CompanyNote, OpportunityNote, ServiceItem,
+  AccessRequest, InboxMessage, NoteComment, NoteVote, CompanyFollowUp,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -296,6 +297,8 @@ export const db = {
       description: c.description || '',
       address: c.address || '',
       logo_url: c.logo_url || '',
+      summary: c.summary || '',
+      created_by: c.created_by || null,
     }
     const { data, error } = await supabase!.from('companies').insert(row).select().single()
     if (error) throw error
@@ -307,6 +310,11 @@ export const db = {
       .from('companies').update({ ...patch, updated_at: iso() }).eq('id', id).select().single()
     if (error) throw error
     return data as Company
+  },
+
+  async deleteCompany(id: string): Promise<void> {
+    const { error } = await supabase!.from('companies').delete().eq('id', id)
+    if (error) throw error
   },
 
   /* ---------- CONTACTS ---------- */
@@ -382,7 +390,9 @@ export const db = {
       title: o.title || '',
       status: o.status || 'new',
       priority: o.priority || 'medium',
-      est_revenue: o.est_revenue || 0,
+      est_revenue: o.offer_value || o.est_revenue || 0,
+      offer_value: o.offer_value || 0,
+      offer_description: o.offer_description || '',
       next_follow_up: o.next_follow_up || null,
       notes: o.notes || '',
     }
@@ -526,7 +536,7 @@ export const db = {
   },
 
   /* ---------- CONVERT OPPORTUNITY TO DEAL ---------- */
-  async convertOppToDeal(oppId: string, sellerId: string, grossValue: number, commissionPct: number): Promise<Deal> {
+  async convertOppToDeal(oppId: string, sellerId: string, grossValue: number): Promise<Deal> {
     const opp = await db.getOpportunity(oppId)
     if (!opp) throw new Error('Opportunity not found')
     const company = await db.getCompany(opp.company_id)
@@ -552,7 +562,7 @@ export const db = {
       meeting_place: '',
       gross_value: grossValue,
       collected_amount: 0,
-      commission_pct: commissionPct,
+      commission_pct: 0,
       custom_commission_pct: null,
       status: 'pending_review',
       notes: opp.notes || '',
@@ -563,5 +573,195 @@ export const db = {
 
     await db.updateOpp(oppId, { converted_deal_id: deal.id, status: 'won' as never })
     return deal
+  },
+
+  /* ================================================================== */
+  /* ACCESS REQUESTS                                                     */
+  /* ================================================================== */
+  async listAccessRequests(userId: string): Promise<AccessRequest[]> {
+    const { data, error } = await supabase!
+      .from('access_requests').select('*')
+      .or(`requester_id.eq.${userId},owner_id.eq.${userId}`)
+      .order('created_at', { ascending: false })
+    if (error) {
+      // If there are stale rows with invalid enum values, the SELECT fails.
+      // Return empty array instead of crashing the page.
+      console.warn('listAccessRequests error:', error.message)
+      return []
+    }
+    return (data || []) as AccessRequest[]
+  },
+
+  async createAccessRequest(r: Partial<AccessRequest>): Promise<void> {
+    const row = {
+      id: uuid(),
+      requester_id: r.requester_id,
+      owner_id: r.owner_id,
+      opportunity_id: r.opportunity_id || null,
+      company_id: r.company_id || null,
+      status: (r.status || 'pending') as 'pending' | 'approved' | 'rejected',
+      message: r.message || '',
+    }
+    // Don't use .select() — avoids PostgREST enum deserialization errors
+    const { error } = await supabase!
+      .from('access_requests').insert(row)
+    if (error) throw error
+  },
+
+  async updateAccessRequest(id: string, patch: Partial<AccessRequest>): Promise<void> {
+    const payload: Record<string, unknown> = {}
+    if (patch.status) payload.status = patch.status as 'pending' | 'approved' | 'rejected'
+    if (patch.message !== undefined) payload.message = patch.message
+    payload.responded_at = new Date().toISOString()
+    // Don't use .select() — avoids PostgREST enum deserialization errors
+    // if there are stale rows with invalid status values in the table
+    const { error } = await supabase!
+      .from('access_requests').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async checkAccess(requesterId: string, ownerId: string, opportunityId?: string, companyId?: string): Promise<boolean> {
+    let q = supabase!.from('access_requests').select('id').eq('requester_id', requesterId).eq('owner_id', ownerId).eq('status', 'approved')
+    if (opportunityId) q = q.eq('opportunity_id', opportunityId)
+    if (companyId) q = q.eq('company_id', companyId)
+    const { data, error } = await q.limit(1)
+    if (error) return false
+    return (data && data.length > 0)
+  },
+
+  /* ---------- INBOX ---------- */
+  async listInbox(userId: string): Promise<InboxMessage[]> {
+    const { data, error } = await supabase!
+      .from('inbox_messages').select('*').eq('recipient_id', userId)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data as InboxMessage[]
+  },
+
+  async unreadInboxCount(userId: string): Promise<number> {
+    const { count, error } = await supabase!
+      .from('inbox_messages').select('id', { count: 'exact', head: true })
+      .eq('recipient_id', userId).eq('read', false)
+    if (error) return 0
+    return count || 0
+  },
+
+  async markInboxRead(id: string): Promise<void> {
+    const { error } = await supabase!.from('inbox_messages').update({ read: true }).eq('id', id)
+    if (error) throw error
+  },
+
+  async markAllInboxRead(userId: string): Promise<void> {
+    const { error } = await supabase!.from('inbox_messages').update({ read: true }).eq('recipient_id', userId).eq('read', false)
+    if (error) throw error
+  },
+
+  async sendInboxMessage(recipientId: string, senderId: string | null, type: string, title: string, body: string, actionUrl = '', metadata: Record<string, unknown> = {}): Promise<void> {
+    const { error } = await supabase!.from('inbox_messages').insert({
+      id: uuid(), recipient_id: recipientId, sender_id: senderId,
+      type: type as never, title, body, read: false, action_url: actionUrl, metadata,
+    })
+    if (error) throw error
+  },
+
+  /* ---------- NOTE COMMENTS ---------- */
+  async listNoteComments(noteId: string): Promise<NoteComment[]> {
+    const { data, error } = await supabase!
+      .from('note_comments').select('*').eq('parent_id', noteId).order('created_at', { ascending: true })
+    if (error) throw error
+    return data as NoteComment[]
+  },
+
+  async createNoteComment(noteId: string, authorId: string, body: string): Promise<NoteComment> {
+    const { data, error } = await supabase!
+      .from('note_comments').insert({ id: uuid(), parent_id: noteId, author_id: authorId, body }).select().single()
+    if (error) throw error
+    return data as NoteComment
+  },
+
+  async deleteNoteComment(id: string): Promise<void> {
+    const { error } = await supabase!.from('note_comments').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- NOTE VOTES ---------- */
+  async getNoteVotes(noteIds: string[]): Promise<NoteVote[]> {
+    if (noteIds.length === 0) return []
+    const { data, error } = await supabase!
+      .from('note_votes').select('*').in('note_id', noteIds)
+    if (error) return []
+    return data as NoteVote[]
+  },
+
+  async voteNote(noteId: string, voterId: string, vote: 'up' | 'down'): Promise<void> {
+    // Delete existing vote first
+    await supabase!.from('note_votes').delete().eq('note_id', noteId).eq('voter_id', voterId)
+    // Insert new vote
+    const { error } = await supabase!.from('note_votes').insert({
+      id: uuid(), note_id: noteId, voter_id: voterId, vote,
+    })
+    if (error) throw error
+  },
+
+  async unvoteNote(noteId: string, voterId: string): Promise<void> {
+    const { error } = await supabase!.from('note_votes').delete().eq('note_id', noteId).eq('voter_id', voterId)
+    if (error) throw error
+  },
+
+  async voteComment(commentId: string, voterId: string, vote: 'up' | 'down'): Promise<void> {
+    await supabase!.from('note_votes').delete().eq('comment_id', commentId).eq('voter_id', voterId)
+    const { error } = await supabase!.from('note_votes').insert({
+      id: uuid(), comment_id: commentId, voter_id: voterId, vote,
+    })
+    if (error) throw error
+  },
+
+  async unvoteComment(commentId: string, voterId: string): Promise<void> {
+    const { error } = await supabase!.from('note_votes').delete().eq('comment_id', commentId).eq('voter_id', voterId)
+    if (error) throw error
+  },
+
+  /* ---------- COMPANY FOLLOW-UPS ---------- */
+  async listFollowUps(companyId: string): Promise<CompanyFollowUp[]> {
+    const { data, error } = await supabase!
+      .from('company_followups').select('*').eq('company_id', companyId).order('created_at', { ascending: false })
+    if (error) throw error
+    return data as CompanyFollowUp[]
+  },
+
+  async createFollowUp(f: Partial<CompanyFollowUp>): Promise<CompanyFollowUp> {
+    const { data, error } = await supabase!
+      .from('company_followups').insert({
+        id: uuid(),
+        company_id: f.company_id,
+        author_id: f.author_id,
+        title: f.title || '',
+        body: f.body || '',
+        follow_up_date: f.follow_up_date || null,
+      }).select().single()
+    if (error) throw error
+    return data as CompanyFollowUp
+  },
+
+  async deleteFollowUp(id: string): Promise<void> {
+    const { error } = await supabase!.from('company_followups').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- REVOKE ACCESS ---------- */
+  async revokeAccess(requestId: string): Promise<void> {
+    // Mark as rejected (revoked)
+    const { error } = await supabase!
+      .from('access_requests').update({ status: 'rejected' as never, responded_at: iso() }).eq('id', requestId)
+    if (error) throw error
+  },
+
+  async listGrantedAccess(ownerId: string): Promise<AccessRequest[]> {
+    const { data, error } = await supabase!
+      .from('access_requests').select('*')
+      .eq('owner_id', ownerId).eq('status', 'approved')
+      .order('created_at', { ascending: false })
+    if (error) return []
+    return (data || []) as AccessRequest[]
   },
 }

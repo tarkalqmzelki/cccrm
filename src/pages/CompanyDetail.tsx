@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Building2, Globe, MapPin, Plus, Clock, Briefcase,
-  ChevronRight, UserPlus, FileText, Network, Lock, Unlock, MessageSquare, UserRound, ShieldCheck, Pencil,
+  ChevronRight, UserPlus, FileText, Network, Lock, Pencil,
+  ArrowBigUp, ArrowBigDown, MessageSquare, Send, Phone, Mail, Calendar,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useAsync } from '../lib/hooks/useAsync'
@@ -19,36 +20,41 @@ import { PageContainer } from '../components/layout/AppShell'
 import { useToast } from '../context/ToastContext'
 import { CreateOppModal } from '../components/CreateOppModal'
 import { ContactCard } from '../components/ContactCard'
-import type { Company, Opportunity, Profile, Activity, CompanyNote, ServiceItem, Contact } from '../lib/types'
+import { RequestAccessButton } from '../components/RequestAccessButton'
+import type { Company, Opportunity, Profile, Activity, CompanyNote, ServiceItem, Contact, NoteComment, AccessRequest, CompanyFollowUp } from '../lib/types'
 import { OPP_STATUS_META } from '../lib/types'
 import { eur, dateShort, dateLong } from '../lib/format'
 
-type Tab = 'opportunities' | 'contacts' | 'notes' | 'timeline'
+type Tab = 'summary' | 'offers' | 'contacts' | 'comments' | 'timeline'
 
 export default function CompanyDetail() {
   const { id } = useParams()
   const { user } = useAuth()
   const { push } = useToast()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<Tab>('opportunities')
+  const [tab, setTab] = useState<Tab>('summary')
   const [createOppOpen, setCreateOppOpen] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  const [editSummaryOpen, setEditSummaryOpen] = useState(false)
+  const [followUpOpen, setFollowUpOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
 
   const { data, loading, reload } = useAsync(async () => {
     const company = await db.getCompany(id!)
     if (!company) return null
-    const [opps, contacts, activities, notes, services, profiles] = await Promise.all([
+    const [opps, contacts, activities, notes, services, profiles, requests, followups] = await Promise.all([
       db.listOpportunitiesByCompany(id!),
       db.listContacts(id!),
       db.listCompanyActivities(id!),
       db.listCompanyNotes(id!),
       db.listServices(),
       db.listProfiles(),
+      user ? db.listAccessRequests(user.id) : Promise.resolve([]),
+      db.listFollowUps(id!),
     ])
-    return { company, opps, contacts, activities, notes, services, profiles: profiles as Profile[] }
-  }, [id])
+    return { company, opps, contacts, activities, notes, services, profiles: profiles as Profile[], requests: requests as AccessRequest[], followups }
+  }, [id, user?.id])
 
   const profileMap = useMemo(() => {
     const m: Record<string, Profile> = {}
@@ -61,25 +67,48 @@ export default function CompanyDetail() {
     return m
   }, [data])
 
+  const accessMap = useMemo(() => {
+    const m: Record<string, boolean> = {}
+    if (data?.requests && user) {
+      data.requests.forEach((r) => {
+        if (r.status === 'approved' && r.requester_id === user.id) {
+          if (r.opportunity_id) m[r.opportunity_id] = true
+          if (r.company_id) m[`company_${r.company_id}`] = true
+        }
+      })
+    }
+    return m
+  }, [data, user])
+
   if (loading) return <PageContainer><Skeleton className="h-40 w-full" /></PageContainer>
   if (!data) return <PageContainer><Card><p className="py-12 text-center text-sm text-ink-400">Company not found.</p></Card></PageContainer>
 
-  const { company, opps, contacts, activities, notes } = data
-  // First opportunity owner is the "primary" owner for unlock purposes
-  const firstOwnerId = opps[0]?.owner_id || ''
-  const firstOwner = profileMap[firstOwnerId]
+  const { company, opps, contacts, activities, notes, followups } = data
+  const hasCompanyAccess = accessMap[`company_${company.id}`]
+  const isCreator = user?.id === company.created_by
+  const isAdmin = user?.role === 'admin'
+  const canEditCompany = isCreator || isAdmin
+  const canAddOffer = canEditCompany
 
   async function addNote() {
     if (!noteText.trim() || !user) return
     try {
       await db.createCompanyNote(company.id, user.id, noteText)
       setNoteText('')
-      push({ tone: 'success', title: 'Note added' })
+      push({ tone: 'success', title: 'Comment posted' })
       reload()
     } catch (e: any) {
-      push({ tone: 'error', title: 'Could not add note', desc: e?.message })
+      push({ tone: 'error', title: 'Could not post', desc: e?.message })
     }
   }
+
+  const tabs: [Tab, string, React.ReactNode, boolean][] = [
+    ['summary', 'Summary', <FileText size={15} strokeWidth={1.75} key="s" />, false],
+    ['offers', 'Offers', <Briefcase size={15} strokeWidth={1.75} key="o" />, false],
+    ['contacts', 'Contacts', <UserPlus size={15} strokeWidth={1.75} key="c" />, true],
+    ['comments', 'Comments', <MessageSquare size={15} strokeWidth={1.75} key="n" />, false],
+    ['timeline', 'Timeline', <Clock size={15} strokeWidth={1.75} key="t" />, true],
+  ]
 
   return (
     <PageContainer>
@@ -87,7 +116,6 @@ export default function CompanyDetail() {
         <ArrowLeft size={15} strokeWidth={1.75} /> Leads
       </button>
 
-      {/* Header */}
       <div className="flex items-start gap-4">
         {company.logo_url ? (
           <img src={company.logo_url} alt={company.name} className="h-14 w-14 rounded-2xl object-cover" />
@@ -104,133 +132,108 @@ export default function CompanyDetail() {
             {company.address && <span className="flex items-center gap-1"><MapPin size={13} strokeWidth={1.75} /> {company.address}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
-          <Button icon={<Plus size={15} strokeWidth={1.75} />} onClick={() => setCreateOppOpen(true)}>New Opportunity</Button>
-        </div>
+        {/* Lead owner bubble */}
+        {company.created_by && profileMap[company.created_by] && (
+          <div className="flex items-center gap-2.5 rounded-xl border border-line px-3 py-2">
+            <Avatar name={profileMap[company.created_by].full_name} color={profileMap[company.created_by].avatar_color} url={profileMap[company.created_by].avatar_url} size={32} />
+            <div className="leading-tight">
+              <p className="text-2xs text-ink-400">Lead Owner</p>
+              <p className="text-sm font-medium">{profileMap[company.created_by].full_name}</p>
+            </div>
+          </div>
+        )}
+        {canEditCompany && (
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
+            {canAddOffer && <Button icon={<Plus size={15} strokeWidth={1.75} />} onClick={() => setCreateOppOpen(true)}>New Offer</Button>}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
       <div className="mt-6 mb-5 flex gap-1 rounded-xl border border-line bg-surface p-1 overflow-x-auto">
-        {([
-          ['opportunities', 'Opportunities', <Briefcase size={15} strokeWidth={1.75} key="b" />, true],
-          ['contacts', 'Contacts', <UserPlus size={15} strokeWidth={1.75} key="u" />, true],
-          ['notes', 'Notes', <FileText size={15} strokeWidth={1.75} key="n" />, false],
-          ['timeline', 'Timeline', <Clock size={15} strokeWidth={1.75} key="t" />, true],
-        ] as [Tab, string, React.ReactNode, boolean][]).map(([key, label, icon, locked]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-              tab === key ? 'text-white' : 'text-ink-500 hover:text-ink'
-            }`}
+        {tabs.map(([key, label, icon, locked]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap ${tab === key ? 'text-white' : 'text-ink-500 hover:text-ink'}`}
           >
             {tab === key && <motion.span layoutId="company-tab" className="absolute inset-0 rounded-lg bg-ink" transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} />}
-            <span className="relative flex items-center gap-1.5">
-              {icon}{label}
-              {locked && <Lock size={10} strokeWidth={2} className="text-ink-300" />}
-            </span>
+            <span className="relative flex items-center gap-1.5">{icon}{label}{locked && <Lock size={10} strokeWidth={2} className="text-ink-300" />}</span>
           </button>
         ))}
       </div>
 
-      {/* Opportunities tab — per-opp locking */}
-      {tab === 'opportunities' && (
+      {/* Summary tab — PUBLIC, first */}
+      {tab === 'summary' && (
+        <SummaryTab company={company} followups={followups} profileMap={profileMap} canEdit={canEditCompany} userId={user?.id || ''}
+          onEditSummary={() => setEditSummaryOpen(true)} onAddFollowUp={() => setFollowUpOpen(true)} onDeleteFollowUp={(fid) => { db.deleteFollowUp(fid).then(reload) }}
+        />
+      )}
+
+      {/* Offers tab — all private except value */}
+      {tab === 'offers' && (
         <div className="space-y-3">
           {opps.length === 0 ? (
-            <Card><p className="py-10 text-center text-sm text-ink-400">No opportunities yet.</p></Card>
+            <Card><p className="py-10 text-center text-sm text-ink-400">No offers yet.</p></Card>
           ) : opps.map((opp) => {
             const m = OPP_STATUS_META[opp.status]
             const owner = profileMap[opp.owner_id]
             const service = serviceMap[opp.service_id]
             const isOppOwner = user?.id === opp.owner_id
-            if (isOppOwner) {
-              // My opportunity — fully visible
+            const hasAccess = isOppOwner || isAdmin || accessMap[opp.id] || hasCompanyAccess
+            if (hasAccess) {
               return (
-                <button
-                  key={opp.id}
-                  onClick={() => navigate(`/leads/opp/${opp.id}`)}
+                <button key={opp.id} onClick={() => navigate(`/leads/opp/${opp.id}`)}
                   className="card w-full text-left hover:border-ink-200 transition-colors flex items-center gap-4"
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-ink-50 text-ink">
                     <Network size={18} strokeWidth={1.75} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{opp.title || service?.name || 'Opportunity'}</p>
-                    <p className="text-2xs text-ink-400">{service?.name} · {owner?.full_name || '—'} (you)</p>
+                    <p className="text-sm font-medium">{opp.title || service?.name || 'Offer'}</p>
+                    <p className="text-2xs text-ink-400">{service?.name} · {isOppOwner ? `${owner?.full_name} (you)` : owner?.full_name || '—'}</p>
                   </div>
                   <Badge tone={m.tone} dot>{m.label}</Badge>
-                  {opp.est_revenue > 0 && <span className="num text-sm font-medium">{eur(opp.est_revenue)}</span>}
+                  {(opp.offer_value || opp.est_revenue) > 0 && <span className="num text-sm font-bold">{eur(opp.offer_value || opp.est_revenue)}</span>}
                   {opp.converted_deal_id && <Badge tone="pos">Deal</Badge>}
                   <ChevronRight size={16} strokeWidth={1.75} className="text-ink-300" />
                 </button>
               )
             }
-            // Not my opportunity — blurred with inline unlock
+            // No access — show only the value, blur everything else, with Request Access
             return (
-              <LockedOppRow
-                key={opp.id}
-                opp={opp}
-                owner={owner}
-                service={service}
-                onClick={() => navigate(`/leads/opp/${opp.id}`)}
-              />
+              <LockedRow key={opp.id} ownerId={opp.owner_id} ownerName={owner?.full_name || ''} opportunityId={opp.id} companyId={company.id} onGranted={() => reload()}>
+                <div className="pointer-events-none select-none blur-md opacity-40 flex items-center gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-ink-50"><Network size={18} strokeWidth={1.75} /></div>
+                  <div className="flex-1"><p className="text-sm font-medium">••••••••</p><p className="text-2xs text-ink-400">••••••</p></div>
+                </div>
+                {/* Value is always visible */}
+                <div className="absolute right-16 top-1/2 -translate-y-1/2">
+                  {(opp.offer_value || opp.est_revenue) > 0 && <span className="num text-sm font-bold">{eur(opp.offer_value || opp.est_revenue)}</span>}
+                </div>
+              </LockedRow>
             )
           })}
         </div>
       )}
 
-      {/* Contacts tab — per-contact locking */}
+      {/* Contacts tab — locked per-contact */}
       {tab === 'contacts' && (
         <Card>
-          <CardHeader
-            title="Contacts"
-            desc="Your contacts are visible — others are locked"
-            action={<Button size="sm" variant="secondary" icon={<Plus size={14} strokeWidth={1.75} />} onClick={() => setAddContactOpen(true)}>Add</Button>}
-          />
+          <CardHeader title="Contacts" desc="Contact details require access" action={canEditCompany ? <Button size="sm" variant="secondary" icon={<Plus size={14} strokeWidth={1.75} />} onClick={() => setAddContactOpen(true)}>Add</Button> : undefined} />
           {contacts.length === 0 ? (
             <p className="py-8 text-center text-sm text-ink-400">No contacts yet.</p>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {contacts.map((c) => {
-                const isMine = c.created_by === user?.id || user?.role === 'admin'
-                if (isMine) {
-                  return <ContactCard key={c.id} contact={c} ownerId={c.created_by || firstOwnerId} canUnlock={false} />
-                }
+                const isMine = c.created_by === user?.id || isAdmin || hasCompanyAccess
+                if (isMine) return <ContactCard key={c.id} contact={c} ownerId={c.created_by || ''} canUnlock={false} unlocked={true} />
                 return (
-                  <LockedContactRow key={c.id} contact={c} ownerId={c.created_by || firstOwnerId} />
-                )
-              })}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Notes tab — PUBLIC */}
-      {tab === 'notes' && (
-        <Card>
-          <CardHeader title="Company notes" desc="Shared internal notes for team coordination — visible to everyone" />
-          <div className="mb-4 flex gap-2">
-            <Textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Leave a note for the team…" rows={2} className="flex-1" />
-            <Button onClick={addNote} disabled={!noteText.trim()}>Post</Button>
-          </div>
-          {notes.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-400">No notes yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {notes.map((n) => {
-                const author = profileMap[n.author_id || '']
-                return (
-                  <div key={n.id} className="flex gap-3 rounded-xl border border-line p-3">
-                    <Avatar name={author?.full_name || '?'} color={author?.avatar_color} url={author?.avatar_url} size={32} />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{author?.full_name || 'Unknown'}</span>
-                        <span className="text-2xs text-ink-400">{dateShort(n.created_at)}</span>
-                      </div>
-                      <p className="mt-1 text-sm text-ink-600">{n.body}</p>
+                  <LockedRow key={c.id} ownerId={c.created_by || ''} ownerName={profileMap[c.created_by || '']?.full_name || ''} companyId={company.id} onGranted={() => reload()}>
+                    <div className="pointer-events-none select-none blur-md opacity-40 flex items-start gap-3">
+                      <div className="h-9 w-9 rounded-full bg-ink-100" />
+                      <div className="flex-1"><p className="text-sm font-medium">{c.full_name}</p><p className="text-2xs text-ink-400">{c.role}</p></div>
                     </div>
-                  </div>
+                  </LockedRow>
                 )
               })}
             </div>
@@ -238,52 +241,311 @@ export default function CompanyDetail() {
         </Card>
       )}
 
-      {/* Timeline tab — per-activity locking */}
+      {/* Comments tab — PUBLIC */}
+      {tab === 'comments' && (
+        <CommentsTab notes={notes} profileMap={profileMap} userId={user?.id || ''} companyId={company.id} onReload={reload} noteText={noteText} setNoteText={setNoteText} onPost={addNote} />
+      )}
+
+      {/* Timeline tab — locked per-activity */}
       {tab === 'timeline' && (
         <Card>
-          <CardHeader title="Timeline" desc="Your activities are visible — others are locked" />
+          <CardHeader title="Timeline" desc="Your activities are visible — others require access" />
           {activities.length === 0 ? (
             <p className="py-8 text-center text-sm text-ink-400">No activity yet.</p>
           ) : (
             <div className="space-y-3">
               {activities.map((a) => {
                 const actor = profileMap[a.actor_id || '']
-                const isMine = a.actor_id === user?.id || user?.role === 'admin'
+                const isMine = a.actor_id === user?.id || isAdmin || hasCompanyAccess
                 if (isMine) {
                   return (
                     <div key={a.id} className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-ink-50 text-ink-400">
-                        <Clock size={13} strokeWidth={1.75} />
-                      </div>
+                      <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-ink-50 text-ink-400"><Clock size={13} strokeWidth={1.75} /></div>
                       <div className="flex-1">
-                        <p className="text-sm text-ink-700">
-                          <span className="font-medium">{actor?.full_name || 'System'}</span>
-                          {' — '}{a.title}
-                        </p>
+                        <p className="text-sm text-ink-700"><span className="font-medium">{actor?.full_name || 'System'}</span> — {a.title}</p>
                         {a.description && <p className="text-2xs text-ink-400 mt-0.5">{a.description}</p>}
                         <p className="text-2xs text-ink-300 mt-0.5">{dateLong(a.created_at)}</p>
                       </div>
                     </div>
                   )
                 }
-                return <LockedActivityRow key={a.id} activity={a} actor={actor} />
+                return (
+                  <LockedRow key={a.id} ownerId={a.actor_id || ''} ownerName={actor?.full_name || ''} companyId={company.id} onGranted={() => reload()}>
+                    <div className="pointer-events-none select-none blur-md opacity-40 flex items-start gap-3 w-full">
+                      <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-ink-50"><Clock size={13} strokeWidth={1.75} /></div>
+                      <div className="flex-1"><p className="text-sm text-ink-700">•••• — ••••••</p><p className="text-2xs text-ink-300">{dateLong(a.created_at)}</p></div>
+                    </div>
+                  </LockedRow>
+                )
               })}
             </div>
           )}
         </Card>
       )}
 
-      <CreateOppModal
-        open={createOppOpen}
-        onClose={() => setCreateOppOpen(false)}
-        onSaved={(oppId) => { setCreateOppOpen(false); navigate(`/leads/opp/${oppId}`) }}
-        presetCompany={company}
-      />
-
-      <AddContactModal open={addContactOpen} onClose={() => setAddContactOpen(false)} companyId={company.id} userId={user?.id || ''} onSaved={() => { setAddContactOpen(false); reload() }} />
-
-      <EditCompanyModal open={editOpen} onClose={() => setEditOpen(false)} company={company} onSaved={() => { setEditOpen(false); reload() }} />
+      <CreateOppModal open={createOppOpen} onClose={() => setCreateOppOpen(false)} onSaved={() => { setCreateOppOpen(false); reload() }} presetCompany={company} />
+      {canEditCompany && <AddContactModal open={addContactOpen} onClose={() => setAddContactOpen(false)} companyId={company.id} userId={user?.id || ''} onSaved={() => { setAddContactOpen(false); reload() }} />}
+      {canEditCompany && <EditCompanyModal open={editOpen} onClose={() => setEditOpen(false)} company={company} onSaved={() => { setEditOpen(false); reload() }} />}
+      {canEditCompany && <EditSummaryModal open={editSummaryOpen} onClose={() => setEditSummaryOpen(false)} company={company} onSaved={() => { setEditSummaryOpen(false); reload() }} />}
+      {canEditCompany && <FollowUpModal open={followUpOpen} onClose={() => setFollowUpOpen(false)} companyId={company.id} userId={user?.id || ''} onSaved={() => { setFollowUpOpen(false); reload() }} />}
     </PageContainer>
+  )
+}
+
+/* ---- Summary tab ---- */
+function SummaryTab({ company, followups, profileMap, canEdit, userId, onEditSummary, onAddFollowUp, onDeleteFollowUp }: {
+  company: Company; followups: CompanyFollowUp[]; profileMap: Record<string, Profile>; canEdit: boolean; userId: string
+  onEditSummary: () => void; onAddFollowUp: () => void; onDeleteFollowUp: (id: string) => void
+}) {
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader title="Cold Call Summary" desc="What happened during the initial call" action={canEdit ? <Button size="sm" variant="secondary" icon={<Pencil size={14} strokeWidth={1.75} />} onClick={onEditSummary}>Edit</Button> : undefined} />
+        {company.summary ? (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-600">{company.summary}</p>
+        ) : (
+          <p className="text-sm text-ink-400">No summary yet.</p>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader title="Follow-ups" desc="Call log and follow-up notes" action={canEdit ? <Button size="sm" variant="secondary" icon={<Plus size={14} strokeWidth={1.75} />} onClick={onAddFollowUp}>Add</Button> : undefined} />
+        {followups.length === 0 ? (
+          <p className="py-6 text-center text-sm text-ink-400">No follow-ups yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {followups.map((f) => {
+              const author = profileMap[f.author_id]
+              const canDelete = f.author_id === userId || canEdit
+              return (
+                <div key={f.id} className="rounded-xl border border-line p-3">
+                  <div className="flex items-center gap-2">
+                    {f.follow_up_date && <span className="flex items-center gap-1 text-2xs text-ink-400"><Calendar size={11} strokeWidth={1.75} /> {dateShort(f.follow_up_date)}</span>}
+                    <span className="text-2xs text-ink-400">{author?.full_name || 'Unknown'}</span>
+                    {canDelete && <button onClick={() => onDeleteFollowUp(f.id)} className="ml-auto text-2xs text-ink-300 hover:text-neg transition-colors">Delete</button>}
+                  </div>
+                  {f.title && <p className="mt-1 text-sm font-medium">{f.title}</p>}
+                  <p className="mt-1 text-sm text-ink-600">{f.body}</p>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+}
+
+/* ---- Comments tab (public, reddit-style) ---- */
+function CommentsTab({ notes, profileMap, userId, companyId, onReload, noteText, setNoteText, onPost }: {
+  notes: CompanyNote[]; profileMap: Record<string, Profile>; userId: string; companyId: string; onReload: () => void; noteText: string; setNoteText: (v: string) => void; onPost: () => void
+}) {
+  const { push } = useToast()
+  const { user } = useAuth()
+  const [commentsMap, setCommentsMap] = useState<Record<string, NoteComment[]>>({})
+  const [votesMap, setVotesMap] = useState<Record<string, { ups: number; downs: number; myVote?: 'up' | 'down' }>>({})
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({})
+  const [commentText, setCommentText] = useState<Record<string, string>>({})
+
+  useMemo(() => {
+    const noteIds = notes.map((n) => n.id)
+    if (noteIds.length === 0) return
+    Promise.all([
+      Promise.all(noteIds.map((id) => db.listNoteComments(id))),
+      db.getNoteVotes(noteIds),
+    ]).then(([commentResults, votes]) => {
+      const cMap: Record<string, NoteComment[]> = {}
+      commentResults.forEach((c, i) => { cMap[noteIds[i]] = c })
+      setCommentsMap(cMap)
+      const vMap: Record<string, { ups: number; downs: number; myVote?: 'up' | 'down' }> = {}
+      notes.forEach((n) => { vMap[n.id] = { ups: 0, downs: 0 } })
+      votes.forEach((v) => {
+        if (v.note_id) {
+          if (!vMap[v.note_id]) vMap[v.note_id] = { ups: 0, downs: 0 }
+          if (v.vote === 'up') vMap[v.note_id].ups++
+          else vMap[v.note_id].downs++
+          if (v.voter_id === userId) vMap[v.note_id].myVote = v.vote
+        }
+      })
+      setVotesMap(vMap)
+    })
+  }, [notes, userId])
+
+  async function vote(noteId: string, vote: 'up' | 'down') {
+    const existing = votesMap[noteId]
+    if (existing?.myVote === vote) { await db.unvoteNote(noteId, userId) }
+    else { await db.voteNote(noteId, userId, vote) }
+    onReload()
+  }
+
+  async function postComment(noteId: string) {
+    const text = commentText[noteId]?.trim()
+    if (!text) return
+    try {
+      await db.createNoteComment(noteId, userId, text)
+      setCommentText({ ...commentText, [noteId]: '' })
+      push({ tone: 'success', title: 'Reply posted' })
+      onReload()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not reply', desc: e?.message })
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Comments" desc="Public — visible to everyone. Discuss, upvote, and collaborate." />
+      <div className="mb-5 flex gap-2">
+        <Textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Share something with the team…" rows={2} className="flex-1" />
+        <Button onClick={onPost} disabled={!noteText.trim()} icon={<Send size={15} strokeWidth={1.75} />}>Post</Button>
+      </div>
+      {notes.length === 0 ? (
+        <p className="py-6 text-center text-sm text-ink-400">No comments yet — be the first to post.</p>
+      ) : (
+        <div className="space-y-4">
+          {notes.map((n) => {
+            const author = profileMap[n.author_id || '']
+            const v = votesMap[n.id] || { ups: 0, downs: 0 }
+            const comments = commentsMap[n.id] || []
+            const expanded = expandedComments[n.id]
+            const canDeleteNote = n.author_id === userId || user?.role === 'admin'
+            return (
+              <div key={n.id} className="rounded-xl border border-line p-4">
+                <div className="flex gap-3">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <button onClick={() => vote(n.id, 'up')} className={`p-0.5 transition-colors ${v.myVote === 'up' ? 'text-pos' : 'text-ink-300 hover:text-ink'}`}>
+                      <ArrowBigUp size={18} strokeWidth={1.75} fill={v.myVote === 'up' ? 'currentColor' : 'none'} />
+                    </button>
+                    <span className="num text-2xs font-semibold">{v.ups - v.downs}</span>
+                    <button onClick={() => vote(n.id, 'down')} className={`p-0.5 transition-colors ${v.myVote === 'down' ? 'text-neg' : 'text-ink-300 hover:text-ink'}`}>
+                      <ArrowBigDown size={18} strokeWidth={1.75} fill={v.myVote === 'down' ? 'currentColor' : 'none'} />
+                    </button>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Avatar name={author?.full_name || '?'} color={author?.avatar_color} url={author?.avatar_url} size={24} />
+                      <span className="text-sm font-medium">{author?.full_name || 'Unknown'}</span>
+                      <span className="text-2xs text-ink-400">{dateShort(n.created_at)}</span>
+                      {canDeleteNote && <button onClick={async () => { try { await db.deleteCompanyNote(n.id); onReload() } catch {} }} className="ml-auto text-2xs text-ink-300 hover:text-neg transition-colors">Delete</button>}
+                    </div>
+                    <p className="mt-2 text-sm text-ink-600">{n.body}</p>
+                    <div className="mt-2 flex items-center gap-3">
+                      <button onClick={() => setExpandedComments({ ...expandedComments, [n.id]: !expanded })} className="flex items-center gap-1 text-2xs text-ink-400 hover:text-ink transition-colors">
+                        <MessageSquare size={12} strokeWidth={1.75} /> {comments.length} {comments.length === 1 ? 'reply' : 'replies'}
+                      </button>
+                    </div>
+                    {expanded && (
+                      <div className="mt-3 space-y-2 border-l-2 border-line pl-3">
+                        {comments.map((c) => {
+                          const cAuthor = profileMap[c.author_id || '']
+                          const canDeleteComment = c.author_id === userId || user?.role === 'admin'
+                          return (
+                            <div key={c.id} className="flex gap-2">
+                              <Avatar name={cAuthor?.full_name || '?'} color={cAuthor?.avatar_color} size={20} />
+                              <div className="flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-medium">{cAuthor?.full_name || 'Unknown'}</span>
+                                  <span className="text-2xs text-ink-400">{dateShort(c.created_at)}</span>
+                                  {canDeleteComment && <button onClick={async () => { try { await db.deleteNoteComment(c.id); onReload() } catch {} }} className="ml-auto text-2xs text-ink-300 hover:text-neg transition-colors">Delete</button>}
+                                </div>
+                                <p className="text-sm text-ink-600">{c.body}</p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div className="flex gap-2 mt-2">
+                          <Input value={commentText[n.id] || ''} onChange={(e) => setCommentText({ ...commentText, [n.id]: e.target.value })} placeholder="Reply…" className="h-9 text-sm" />
+                          <Button size="sm" onClick={() => postComment(n.id)} disabled={!commentText[n.id]?.trim()}>Reply</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+/* ---- LockedRow ---- */
+function LockedRow({ ownerId, ownerName, opportunityId, companyId, onGranted, children }: {
+  ownerId: string; ownerName: string; opportunityId?: string; companyId?: string; onGranted?: () => void; children: React.ReactNode
+}) {
+  return (
+    <div className="card relative overflow-hidden">
+      {children}
+      <div className="absolute inset-0 flex items-center justify-between px-5">
+        <div className="flex items-center gap-2">
+          <motion.span animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
+            <Lock size={16} strokeWidth={1.75} className="text-ink-300" />
+          </motion.span>
+          <span className="text-sm text-ink-400">Private</span>
+        </div>
+        <RequestAccessButton ownerId={ownerId} ownerName={ownerName} opportunityId={opportunityId} companyId={companyId} onGranted={onGranted} />
+      </div>
+    </div>
+  )
+}
+
+/* ---- Edit Summary Modal ---- */
+function EditSummaryModal({ open, onClose, company, onSaved }: { open: boolean; onClose: () => void; company: Company; onSaved: () => void }) {
+  const { push } = useToast()
+  const [summary, setSummary] = useState(company.summary)
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await db.updateCompany(company.id, { summary })
+      push({ tone: 'success', title: 'Summary updated' })
+      onSaved()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not save', desc: e?.message })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit summary" desc="Describe what happened during the cold call." size="lg"
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></>}
+    >
+      <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={6} placeholder="Describe the cold call: who you spoke to, their interest level, pain points, next steps…" />
+    </Modal>
+  )
+}
+
+/* ---- Follow-up Modal ---- */
+function FollowUpModal({ open, onClose, companyId, userId, onSaved }: { open: boolean; onClose: () => void; companyId: string; userId: string; onSaved: () => void }) {
+  const { push } = useToast()
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [date, setDate] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!body.trim()) { push({ tone: 'error', title: 'Body is required' }); return }
+    setSaving(true)
+    try {
+      await db.createFollowUp({ company_id: companyId, author_id: userId, title, body, follow_up_date: date || null })
+      push({ tone: 'success', title: 'Follow-up added' })
+      setTitle(''); setBody(''); setDate('')
+      onSaved()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not add', desc: e?.message })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add follow-up" size="md"
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>Add</Button></>}
+    >
+      <div className="space-y-4">
+        <Field label="Title" hint="Optional"><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Second call — interested" /></Field>
+        <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <Field label="Notes" required><Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} placeholder="What was discussed…" /></Field>
+      </div>
+    </Modal>
   )
 }
 
@@ -361,397 +623,5 @@ function AddContactModal({ open, onClose, companyId, userId, onSaved }: { open: 
         <Field label="Role"><Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="CEO / CTO" /></Field>
       </div>
     </Modal>
-  )
-}
-
-/* ---- Locked opportunity row (for other people's opportunities) ---- */
-function LockedOppRow({ opp, owner, service, onClick }: {
-  opp: Opportunity
-  owner?: Profile
-  service?: ServiceItem
-  onClick: () => void
-}) {
-  const { user } = useAuth()
-  const { push } = useToast()
-  const isAdmin = user?.role === 'admin'
-  const [revealed, setRevealed] = useState(false)
-  const [unlockMode, setUnlockMode] = useState<'owner_uid' | 'assignee' | 'admin' | null>(null)
-  const [code, setCode] = useState('')
-  const [verifying, setVerifying] = useState(false)
-  const [assigneeName, setAssigneeName] = useState<string | null>(null)
-
-  const m = OPP_STATUS_META[opp.status]
-
-  async function verify() {
-    if (!code.trim()) return
-    setVerifying(true)
-    try {
-      if (unlockMode === 'admin') {
-        if (!isAdmin) { push({ tone: 'error', title: 'Admin only' }); return }
-        setRevealed(true); close()
-        push({ tone: 'success', title: 'Admin unlock' })
-      } else if (unlockMode === 'owner_uid') {
-        const o = await db.getProfile(opp.owner_id)
-        if (!o?.uid) { push({ tone: 'error', title: 'Owner has no UID', desc: 'Ask the admin to set their UID.' }); return }
-        if (code.toUpperCase().trim() === o.uid.toUpperCase()) {
-          setRevealed(true); close()
-          push({ tone: 'success', title: 'Unlocked' })
-        } else { push({ tone: 'error', title: 'Invalid code' }) }
-      } else {
-        const profiles = await db.listProfiles()
-        const match = profiles.find((p) => p.uid && p.uid.toUpperCase() === code.toUpperCase().trim())
-        if (match) {
-          setRevealed(true); setAssigneeName(match.full_name); close()
-          push({ tone: 'success', title: `Verified as ${match.full_name}` })
-        } else { push({ tone: 'error', title: 'Invalid UID' }) }
-      }
-    } catch (e: any) {
-      push({ tone: 'error', title: 'Verification failed', desc: e?.message })
-    } finally { setVerifying(false) }
-  }
-  function close() { setUnlockMode(null); setCode('') }
-
-  if (revealed || isAdmin) {
-    return (
-      <button
-        onClick={onClick}
-        className="card w-full text-left hover:border-ink-200 transition-colors flex items-center gap-4"
-      >
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-ink-50 text-ink">
-          <Network size={18} strokeWidth={1.75} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{opp.title || service?.name || 'Opportunity'}</p>
-          <p className="text-2xs text-ink-400">{service?.name} · {owner?.full_name || '—'}</p>
-        </div>
-        <Badge tone={m.tone} dot>{m.label}</Badge>
-        {opp.est_revenue > 0 && <span className="num text-sm font-medium">{eur(opp.est_revenue)}</span>}
-        {opp.converted_deal_id && <Badge tone="pos">Deal</Badge>}
-        <ChevronRight size={16} strokeWidth={1.75} className="text-ink-300" />
-      </button>
-    )
-  }
-
-  return (
-    <>
-      <div className="card relative overflow-hidden">
-        {/* Blurred preview */}
-        <div className="pointer-events-none select-none blur-md opacity-40 flex items-center gap-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-ink-50">
-            <Network size={18} strokeWidth={1.75} />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium">{opp.title || service?.name || 'Opportunity'}</p>
-            <p className="text-2xs text-ink-400">{service?.name} · {owner?.full_name || '—'}</p>
-          </div>
-          <Badge tone={m.tone} dot>{m.label}</Badge>
-        </div>
-        {/* Overlay */}
-        <div className="absolute inset-0 flex items-center justify-between px-5">
-          <div className="flex items-center gap-2">
-            <motion.span animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
-              <Lock size={16} strokeWidth={1.75} className="text-ink-300" />
-            </motion.span>
-            <span className="text-sm text-ink-400">Private opportunity</span>
-          </div>
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => setUnlockMode('owner_uid')}
-              className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-2xs font-medium text-ink-600 hover:bg-ink-50 transition-colors"
-            >
-              <Unlock size={11} strokeWidth={1.75} /> Unlock
-            </button>
-            <button
-              onClick={() => setUnlockMode('assignee')}
-              className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-2xs font-medium text-ink-600 hover:bg-ink-50 transition-colors"
-            >
-              <MessageSquare size={11} strokeWidth={1.75} /> Contact Lead
-            </button>
-            {isAdmin && (
-              <button
-                onClick={() => setUnlockMode('admin')}
-                className="flex items-center gap-1 rounded-lg border border-ink bg-surface px-2 py-1 text-2xs font-medium text-ink hover:bg-ink-50 transition-colors"
-              >
-                <ShieldCheck size={11} strokeWidth={1.75} /> Admin
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <Modal
-        open={!!unlockMode}
-        onClose={close}
-        title={unlockMode === 'owner_uid' ? 'Unlock opportunity' : 'Contact Lead Assignee'}
-        desc={unlockMode === 'owner_uid'
-          ? 'Enter the opportunity owner\'s UID to reveal details.'
-          : 'Enter your own UID to verify you\'re a seller and collaborate.'}
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={close}>Cancel</Button>
-            <Button onClick={verify} disabled={verifying || !code.trim()} icon={<Unlock size={15} strokeWidth={1.75} />}>
-              {verifying ? 'Verifying…' : unlockMode === 'owner_uid' ? 'Unlock' : 'Verify'}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <Field
-            label={unlockMode === 'owner_uid' ? 'Owner UID' : 'Your UID'}
-            required
-            hint={unlockMode === 'owner_uid' ? 'Ask the owner for their 6-character code.' : 'Enter your own 6-character UID.'}
-          >
-            <Input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="AB12CD"
-              maxLength={6}
-              className="text-center text-lg tracking-[0.3em] font-mono uppercase"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && verify()}
-            />
-          </Field>
-          {unlockMode === 'assignee' && (
-            <div className="flex items-start gap-2 rounded-xl bg-infoBg border border-info/20 p-3">
-              <UserRound size={15} strokeWidth={1.75} className="mt-0.5 text-info shrink-0" />
-              <p className="text-2xs text-info">Once verified, you'll see the owner's name and can collaborate on this opportunity.</p>
-            </div>
-          )}
-        </div>
-      </Modal>
-    </>
-  )
-}
-
-/* ---- Locked contact row (for other people's contacts) ---- */
-function LockedContactRow({ contact, ownerId }: { contact: Contact; ownerId: string }) {
-  const { user } = useAuth()
-  const { push } = useToast()
-  const isAdmin = user?.role === 'admin'
-  const [revealed, setRevealed] = useState(false)
-  const [unlockMode, setUnlockMode] = useState<'owner_uid' | 'assignee' | 'admin' | null>(null)
-  const [code, setCode] = useState('')
-  const [verifying, setVerifying] = useState(false)
-
-  async function verify() {
-    if (!code.trim()) return
-    setVerifying(true)
-    try {
-      if (unlockMode === 'admin') {
-        if (!isAdmin) { push({ tone: 'error', title: 'Admin only' }); return }
-        setRevealed(true); close()
-        push({ tone: 'success', title: 'Admin unlock' })
-      } else if (unlockMode === 'owner_uid') {
-        const o = await db.getProfile(ownerId)
-        if (!o?.uid) { push({ tone: 'error', title: 'Owner has no UID', desc: 'Ask the admin to set their UID.' }); return }
-        if (code.toUpperCase().trim() === o.uid.toUpperCase()) {
-          setRevealed(true); close()
-          push({ tone: 'success', title: 'Contact unlocked' })
-        } else { push({ tone: 'error', title: 'Invalid code' }) }
-      } else {
-        const profiles = await db.listProfiles()
-        const match = profiles.find((p) => p.uid && p.uid.toUpperCase() === code.toUpperCase().trim())
-        if (match) {
-          setRevealed(true); close()
-          push({ tone: 'success', title: `Verified as ${match.full_name}`, desc: 'Contact is now visible.' })
-        } else { push({ tone: 'error', title: 'Invalid UID' }) }
-      }
-    } catch (e: any) {
-      push({ tone: 'error', title: 'Verification failed', desc: e?.message })
-    } finally { setVerifying(false) }
-  }
-  function close() { setUnlockMode(null); setCode('') }
-
-  if (revealed || isAdmin) {
-    return <ContactCard contact={contact} ownerId={ownerId} canUnlock={false} />
-  }
-
-  return (
-    <>
-      <div className="relative rounded-xl border border-line p-3 overflow-hidden">
-        <div className="pointer-events-none select-none blur-md opacity-40 flex items-start gap-3">
-          <div className="h-9 w-9 rounded-full bg-ink-100" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">{contact.full_name || 'Unnamed'}</p>
-            <p className="text-2xs text-ink-400">{contact.role}</p>
-            <div className="mt-1.5 space-y-0.5">
-              <p className="text-2xs text-ink-500 num">••••••••</p>
-              <p className="text-2xs text-ink-500">••••@••••</p>
-            </div>
-          </div>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-between px-3">
-          <div className="flex items-center gap-2">
-            <motion.span animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
-              <Lock size={14} strokeWidth={1.75} className="text-ink-300" />
-            </motion.span>
-            <span className="text-2xs text-ink-400">Private contact</span>
-          </div>
-          <div className="flex gap-1">
-            <button onClick={() => setUnlockMode('owner_uid')} className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-2xs font-medium text-ink-600 hover:bg-ink-50 transition-colors">
-              <Unlock size={11} strokeWidth={1.75} /> Unlock
-            </button>
-            <button onClick={() => setUnlockMode('assignee')} className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-2xs font-medium text-ink-600 hover:bg-ink-50 transition-colors">
-              <MessageSquare size={11} strokeWidth={1.75} /> Contact
-            </button>
-            {isAdmin && (
-              <button onClick={() => setUnlockMode('admin')} className="flex items-center gap-1 rounded-lg border border-ink bg-surface px-2 py-1 text-2xs font-medium text-ink hover:bg-ink-50 transition-colors">
-                <ShieldCheck size={11} strokeWidth={1.75} /> Admin
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <Modal
-        open={!!unlockMode}
-        onClose={close}
-        title={unlockMode === 'owner_uid' ? 'Unlock contact' : 'Contact Lead Assignee'}
-        desc={unlockMode === 'owner_uid'
-          ? 'Enter the contact owner\'s UID to reveal details.'
-          : 'Enter your own UID to verify and collaborate.'}
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={close}>Cancel</Button>
-            <Button onClick={verify} disabled={verifying || !code.trim()} icon={<Unlock size={15} strokeWidth={1.75} />}>
-              {verifying ? 'Verifying…' : unlockMode === 'owner_uid' ? 'Unlock' : 'Verify'}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <Field label={unlockMode === 'owner_uid' ? 'Owner UID' : 'Your UID'} required
-            hint={unlockMode === 'owner_uid' ? 'Ask the owner for their 6-character code.' : 'Enter your own 6-character UID.'}
-          >
-            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="AB12CD" maxLength={6}
-              className="text-center text-lg tracking-[0.3em] font-mono uppercase" autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && verify()}
-            />
-          </Field>
-          {unlockMode === 'assignee' && (
-            <div className="flex items-start gap-2 rounded-xl bg-infoBg border border-info/20 p-3">
-              <UserRound size={15} strokeWidth={1.75} className="mt-0.5 text-info shrink-0" />
-              <p className="text-2xs text-info">Once verified, you'll see the contact owner and can collaborate.</p>
-            </div>
-          )}
-        </div>
-      </Modal>
-    </>
-  )
-}
-
-/* ---- Locked activity row (for other people's timeline entries) ---- */
-function LockedActivityRow({ activity, actor }: { activity: Activity; actor?: Profile }) {
-  const { user } = useAuth()
-  const { push } = useToast()
-  const isAdmin = user?.role === 'admin'
-  const [revealed, setRevealed] = useState(false)
-  const [unlockMode, setUnlockMode] = useState<'owner_uid' | 'assignee' | 'admin' | null>(null)
-  const [code, setCode] = useState('')
-  const [verifying, setVerifying] = useState(false)
-
-  async function verify() {
-    if (!code.trim()) return
-    setVerifying(true)
-    try {
-      if (unlockMode === 'admin') {
-        if (!isAdmin) { push({ tone: 'error', title: 'Admin only' }); return }
-        setRevealed(true); close()
-        push({ tone: 'success', title: 'Admin unlock' })
-      } else if (unlockMode === 'owner_uid') {
-        const o = await db.getProfile(activity.actor_id || '')
-        if (!o?.uid) { push({ tone: 'error', title: 'No UID set' }); return }
-        if (code.toUpperCase().trim() === o.uid.toUpperCase()) {
-          setRevealed(true); close()
-          push({ tone: 'success', title: 'Unlocked' })
-        } else { push({ tone: 'error', title: 'Invalid code' }) }
-      } else {
-        const profiles = await db.listProfiles()
-        const match = profiles.find((p) => p.uid && p.uid.toUpperCase() === code.toUpperCase().trim())
-        if (match) { setRevealed(true); close(); push({ tone: 'success', title: `Verified as ${match.full_name}` }) }
-        else { push({ tone: 'error', title: 'Invalid UID' }) }
-      }
-    } catch (e: any) {
-      push({ tone: 'error', title: 'Verification failed', desc: e?.message })
-    } finally { setVerifying(false) }
-  }
-  function close() { setUnlockMode(null); setCode('') }
-
-  if (revealed || isAdmin) {
-    return (
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-ink-50 text-ink-400">
-          <Clock size={13} strokeWidth={1.75} />
-        </div>
-        <div className="flex-1">
-          <p className="text-sm text-ink-700">
-            <span className="font-medium">{actor?.full_name || 'System'}</span>
-            {' — '}{activity.title}
-          </p>
-          {activity.description && <p className="text-2xs text-ink-400 mt-0.5">{activity.description}</p>}
-          <p className="text-2xs text-ink-300 mt-0.5">{dateLong(activity.created_at)}</p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <>
-      <div className="relative flex items-start gap-3 overflow-hidden rounded-lg py-2">
-        <div className="pointer-events-none select-none blur-md opacity-40 flex items-start gap-3 w-full">
-          <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-ink-50">
-            <Clock size={13} strokeWidth={1.75} />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm text-ink-700">{actor?.full_name || 'Someone'} — {activity.title}</p>
-            <p className="text-2xs text-ink-300">{dateLong(activity.created_at)}</p>
-          </div>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <Lock size={12} strokeWidth={1.75} className="text-ink-300" />
-            <span className="text-2xs text-ink-400">Private activity</span>
-          </div>
-          <div className="flex gap-1">
-            <button onClick={() => setUnlockMode('owner_uid')} className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-0.5 text-2xs font-medium text-ink-600 hover:bg-ink-50 transition-colors">
-              <Unlock size={10} strokeWidth={1.75} /> Unlock
-            </button>
-            <button onClick={() => setUnlockMode('assignee')} className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-0.5 text-2xs font-medium text-ink-600 hover:bg-ink-50 transition-colors">
-              <MessageSquare size={10} strokeWidth={1.75} /> Contact
-            </button>
-            {isAdmin && (
-              <button onClick={() => setUnlockMode('admin')} className="flex items-center gap-1 rounded-lg border border-ink bg-surface px-2 py-0.5 text-2xs font-medium text-ink hover:bg-ink-50 transition-colors">
-                <ShieldCheck size={10} strokeWidth={1.75} /> Admin
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <Modal
-        open={!!unlockMode}
-        onClose={close}
-        title={unlockMode === 'owner_uid' ? 'Unlock activity' : 'Contact Lead Assignee'}
-        desc={unlockMode === 'owner_uid' ? 'Enter the author\'s UID.' : 'Enter your own UID to verify.'}
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={close}>Cancel</Button>
-            <Button onClick={verify} disabled={verifying || !code.trim()} icon={<Unlock size={15} strokeWidth={1.75} />}>
-              {verifying ? 'Verifying…' : 'Verify'}
-            </Button>
-          </>
-        }
-      >
-        <Field label={unlockMode === 'owner_uid' ? 'Author UID' : 'Your UID'} required>
-          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="AB12CD" maxLength={6}
-            className="text-center text-lg tracking-[0.3em] font-mono uppercase" autoFocus
-            onKeyDown={(e) => e.key === 'Enter' && verify()}
-          />
-        </Field>
-      </Modal>
-    </>
   )
 }

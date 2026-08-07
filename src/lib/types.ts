@@ -47,6 +47,8 @@ export interface Company {
   description: string
   address: string
   logo_url: string
+  summary: string
+  created_by: string | null
   created_at: string
   updated_at: string
 }
@@ -82,11 +84,23 @@ export interface Opportunity {
   status: OppStatus
   priority: 'low' | 'medium' | 'high'
   est_revenue: number
+  offer_value: number
+  offer_description: string
   next_follow_up: string | null
   notes: string
   converted_deal_id: string | null
   created_at: string
   updated_at: string
+}
+
+export interface CompanyFollowUp {
+  id: string
+  company_id: string
+  author_id: string
+  title: string
+  body: string
+  follow_up_date: string | null
+  created_at: string
 }
 
 export interface Activity {
@@ -127,6 +141,52 @@ export interface OpportunityNote {
   opportunity_id: string
   author_id: string | null
   body: string
+  created_at: string
+}
+
+// ---- Access requests & inbox ----
+export type AccessRequestStatus = 'pending' | 'approved' | 'rejected'
+export type InboxType = 'access_request' | 'access_approved' | 'access_rejected' | 'note_reply' | 'note_vote' | 'admin_grant' | 'system'
+
+export interface AccessRequest {
+  id: string
+  requester_id: string
+  owner_id: string
+  opportunity_id: string | null
+  company_id: string | null
+  status: AccessRequestStatus
+  message: string
+  created_at: string
+  responded_at: string | null
+}
+
+export interface InboxMessage {
+  id: string
+  recipient_id: string
+  sender_id: string | null
+  type: InboxType
+  title: string
+  body: string
+  read: boolean
+  action_url: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface NoteComment {
+  id: string
+  parent_id: string
+  author_id: string | null
+  body: string
+  created_at: string
+}
+
+export interface NoteVote {
+  id: string
+  voter_id: string
+  note_id: string | null
+  comment_id: string | null
+  vote: 'up' | 'down'
   created_at: string
 }
 

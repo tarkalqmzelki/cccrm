@@ -13,10 +13,11 @@ import type { Contact } from '../lib/types'
 
 type UnlockMode = 'owner_uid' | 'assignee' | 'admin'
 
-export function ContactCard({ contact, ownerId, canUnlock }: {
+export function ContactCard({ contact, ownerId, canUnlock, unlocked }: {
   contact: Contact
   ownerId: string
   canUnlock: boolean
+  unlocked?: boolean
 }) {
   const { user } = useAuth()
   const { push } = useToast()
@@ -26,9 +27,9 @@ export function ContactCard({ contact, ownerId, canUnlock }: {
   const [verifying, setVerifying] = useState(false)
   const [assigneeName, setAssigneeName] = useState<string | null>(null)
 
-  const isOwner = user?.id === ownerId
+  const isOwner = user?.id === ownerId || user?.id === contact.created_by
   const isAdmin = user?.role === 'admin'
-  const showFull = isOwner || isAdmin || revealed
+  const showFull = isOwner || isAdmin || revealed || unlocked
 
   function blurName(name: string) {
     if (!name || showFull) return name

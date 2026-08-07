@@ -15,7 +15,6 @@ import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { Dropdown } from '../components/ui/Dropdown'
 import { Modal } from '../components/ui/Modal'
-import { Input, Field } from '../components/ui/Input'
 import { DealModal } from '../components/DealModal'
 import { PageContainer } from '../components/layout/AppShell'
 import { useToast } from '../context/ToastContext'
@@ -339,22 +338,14 @@ function AdminUnlockButton({ onUnlock }: { onUnlock: () => void }) {
   const { user } = useAuth()
   const { push } = useToast()
   const [open, setOpen] = useState(false)
-  const [code, setCode] = useState('')
   const [verifying, setVerifying] = useState(false)
 
   async function verify() {
-    if (!code.trim()) return
     setVerifying(true)
     try {
-      if (user?.uid && code.toUpperCase().trim() === user.uid.toUpperCase()) {
-        onUnlock(); setOpen(false); setCode('')
-        push({ tone: 'success', title: 'Admin unlock' })
-      } else if (!user?.uid) {
-        onUnlock(); setOpen(false); setCode('')
-        push({ tone: 'success', title: 'Admin unlock' })
-      } else {
-        push({ tone: 'error', title: 'Invalid admin UID' })
-      }
+      // Admin simply confirms — no UID needed anymore
+      onUnlock(); setOpen(false)
+      push({ tone: 'success', title: 'Admin unlock' })
     } finally { setVerifying(false) }
   }
 
@@ -363,15 +354,10 @@ function AdminUnlockButton({ onUnlock }: { onUnlock: () => void }) {
       <button onClick={() => setOpen(true)} className="flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-2xs font-medium text-ink-500 hover:bg-ink-50 transition-colors">
         <Unlock size={12} strokeWidth={1.75} /> Unlock
       </button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Admin unlock" desc="Enter your admin UID to reveal contact details." size="sm"
-        footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={verify} disabled={verifying || !code.trim()}>Unlock</Button></>}
+      <Modal open={open} onClose={() => setOpen(false)} title="Admin unlock" desc="Confirm to reveal contact details." size="sm"
+        footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={verify} disabled={verifying}>Unlock</Button></>}
       >
-        <Field label="Your admin UID" required>
-          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="AB12CD" maxLength={6}
-            className="text-center text-lg tracking-[0.3em] font-mono uppercase" autoFocus
-            onKeyDown={(e) => e.key === 'Enter' && verify()}
-          />
-        </Field>
+        <p className="text-sm text-ink-500">Are you sure you want to reveal the contact details for this deal?</p>
       </Modal>
     </>
   )
