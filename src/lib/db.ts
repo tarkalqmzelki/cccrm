@@ -3,7 +3,9 @@ import { uuid } from './uuid'
 import type {
   Profile, Referral, Lead, Deal, Payout, Settings,
   Company, Contact, Opportunity, Activity, Task, CompanyNote, OpportunityNote, ServiceItem,
-  AccessRequest, InboxMessage, NoteComment, NoteVote, CompanyFollowUp,
+  AccessRequest, InboxMessage, NoteComment, NoteVote, CompanyFollowUp, ChatMessage, SystemStatus, SystemStatusValue,
+  FinanceEntry, FinanceCategory, FinanceKind,
+  ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -664,6 +666,45 @@ export const db = {
     if (error) throw error
   },
 
+  /* ---------- DIRECT MESSAGES (email-like, member -> member) ---------- */
+  async sendDirectMessage(recipientId: string, senderId: string, title: string, body: string): Promise<void> {
+    const { error } = await supabase!.from('inbox_messages').insert({
+      id: uuid(),
+      recipient_id: recipientId,
+      sender_id: senderId,
+      type: 'direct_message' as never,
+      title: title || '',
+      body: body || '',
+      read: false,
+      action_url: '/inbox',
+      metadata: { kind: 'direct_message' },
+    })
+    if (error) throw error
+  },
+
+  /* ---------- GENERAL CHAT (platform-wide channel) ---------- */
+  async listChatMessages(limit = 200): Promise<ChatMessage[]> {
+    const { data, error } = await supabase!
+      .from('chat_messages').select('*')
+      .order('created_at', { ascending: true })
+      .limit(limit)
+    if (error) throw error
+    return (data || []) as ChatMessage[]
+  },
+
+  async sendChatMessage(senderId: string, body: string): Promise<ChatMessage> {
+    const { data, error } = await supabase!
+      .from('chat_messages').insert({ id: uuid(), sender_id: senderId, body })
+      .select().single()
+    if (error) throw error
+    return data as ChatMessage
+  },
+
+  async deleteChatMessage(id: string): Promise<void> {
+    const { error } = await supabase!.from('chat_messages').delete().eq('id', id)
+    if (error) throw error
+  },
+
   /* ---------- NOTE COMMENTS ---------- */
   async listNoteComments(noteId: string): Promise<NoteComment[]> {
     const { data, error } = await supabase!
@@ -756,12 +797,143 @@ export const db = {
     if (error) throw error
   },
 
-  async listGrantedAccess(ownerId: string): Promise<AccessRequest[]> {
+async listGrantedAccess(ownerId: string): Promise<AccessRequest[]> {
     const { data, error } = await supabase!
       .from('access_requests').select('*')
       .eq('owner_id', ownerId).eq('status', 'approved')
       .order('created_at', { ascending: false })
     if (error) return []
     return (data || []) as AccessRequest[]
+  },
+
+  /* ---------- SYSTEM STATUS (platform status page + admin toggles) ---------- */
+  async listSystemStatuses(): Promise<SystemStatus[]> {
+    const { data, error } = await supabase!
+      .from('system_status').select('*').order('system', { ascending: true })
+    if (error) return []
+    return (data || []) as SystemStatus[]
+  },
+
+async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' | 'uptime_pct' | 'note'>>): Promise<void> {
+    const payload: Record<string, unknown> = {}
+    if (patch.status) payload.status = patch.status as SystemStatusValue
+    if (patch.uptime_pct !== undefined) payload.uptime_pct = patch.uptime_pct
+    if (patch.note !== undefined) payload.note = patch.note
+    const { error } = await supabase!.from('system_status').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- FINANCES (admin revenue/cost ledger) ---------- */
+  async listFinanceEntries(): Promise<FinanceEntry[]> {
+    const { data, error } = await supabase!
+      .from('finance_entries').select('*')
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
+    if (error) return []
+    return (data || []) as FinanceEntry[]
+  },
+
+  async createFinanceEntry(e: {
+    kind: FinanceKind
+    category: FinanceCategory
+    title: string
+    description?: string
+    amount: number
+    entry_date: string
+    deal_id?: string | null
+  }): Promise<void> {
+    const { error } = await supabase!.from('finance_entries').insert({
+      kind: e.kind,
+      category: e.category,
+      title: e.title,
+      description: e.description || '',
+      amount: e.amount,
+      entry_date: e.entry_date,
+      deal_id: e.deal_id || null,
+    })
+    if (error) throw error
+  },
+
+async deleteFinanceEntry(id: string): Promise<void> {
+    const { error } = await supabase!.from('finance_entries').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- SCHEDULED ACTIVITIES (Kanban + Calendar) ---------- */
+  async listScheduledActivities(): Promise<ScheduledActivity[]> {
+    const { data, error } = await supabase!
+      .from('scheduled_activities').select('*')
+      .order('scheduled_at', { ascending: true })
+    if (error) return []
+    return (data || []) as ScheduledActivity[]
+  },
+
+  async createScheduledActivity(a: {
+    owner_id: string
+    type?: ScheduledActivityType
+    status?: ScheduledActivityStatus
+    title: string
+    notes?: string
+    color?: string
+    scheduled_at: string
+    duration_min?: number
+    company_id?: string | null
+    opportunity_id?: string | null
+    visible_on_calendar?: boolean
+  }): Promise<void> {
+    const { error } = await supabase!.from('scheduled_activities').insert({
+      owner_id: a.owner_id,
+      type: a.type || 'meeting',
+      status: a.status || 'planned',
+      title: a.title,
+      notes: a.notes || '',
+      color: a.color || '',
+      scheduled_at: a.scheduled_at,
+      duration_min: a.duration_min ?? 30,
+      company_id: a.company_id || null,
+      opportunity_id: a.opportunity_id || null,
+      visible_on_calendar: a.visible_on_calendar ?? true,
+    })
+    if (error) throw error
+  },
+
+  async updateScheduledActivity(id: string, patch: Partial<ScheduledActivity>): Promise<void> {
+    const payload: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(patch)) {
+      if (['type', 'status', 'title', 'notes', 'color', 'scheduled_at', 'duration_min', 'company_id', 'opportunity_id', 'owner_id', 'visible_on_calendar'].includes(k)) {
+        payload[k] = v
+      }
+    }
+    const { error } = await supabase!.from('scheduled_activities').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteScheduledActivity(id: string): Promise<void> {
+    const { error } = await supabase!.from('scheduled_activities').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- ACTIVITY COMMENTS ---------- */
+  async listActivityComments(activityId: string): Promise<ActivityComment[]> {
+    const { data, error } = await supabase!
+      .from('scheduled_activity_comments').select('*')
+      .eq('activity_id', activityId)
+      .order('created_at', { ascending: true })
+    if (error) return []
+    return (data || []) as ActivityComment[]
+  },
+
+  async createActivityComment(activityId: string, authorId: string, body: string): Promise<void> {
+    const { error } = await supabase!.from('scheduled_activity_comments').insert({
+      activity_id: activityId,
+      author_id: authorId,
+      body,
+    })
+    if (error) throw error
+  },
+
+  async deleteActivityComment(id: string): Promise<void> {
+    const { error } = await supabase!.from('scheduled_activity_comments').delete().eq('id', id)
+    if (error) throw error
   },
 }

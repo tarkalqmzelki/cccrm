@@ -11,6 +11,9 @@ import DealDetail from './pages/DealDetail'
 import Leaderboard from './pages/Leaderboard'
 import Referrals from './pages/Referrals'
 import Payouts from './pages/Payouts'
+import Finances from './pages/Finances'
+import ActivitiesKanban from './pages/ActivitiesKanban'
+import ActivitiesCalendar from './pages/ActivitiesCalendar'
 import Sellers from './pages/admin/Sellers'
 import SettingsPage from './pages/admin/Settings'
 import CreateUser from './pages/admin/CreateUser'
@@ -46,6 +49,8 @@ function Shell() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/inbox" element={<InboxPage />} />
+        <Route path="/kanban" element={<ActivitiesKanban />} />
+        <Route path="/calendar" element={<ActivitiesCalendar />} />
         <Route path="/given-access" element={<GivenAccess />} />
         <Route path="/leads" element={<Leads />} />
         <Route path="/leads/:id" element={<CompanyDetail />} />
@@ -55,6 +60,7 @@ function Shell() {
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/referrals" element={<Referrals />} />
         <Route path="/payouts" element={<Payouts />} />
+        <Route path="/finances" element={<Protected roles={['admin']}><Finances /></Protected>} />
         <Route path="/sellers" element={<Protected roles={['admin']}><Sellers /></Protected>} />
         <Route path="/create-user" element={<Protected roles={['admin']}><CreateUser /></Protected>} />
         <Route path="/settings" element={<Protected roles={['admin']}><SettingsPage /></Protected>} />

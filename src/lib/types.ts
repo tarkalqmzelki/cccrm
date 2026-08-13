@@ -146,7 +146,7 @@ export interface OpportunityNote {
 
 // ---- Access requests & inbox ----
 export type AccessRequestStatus = 'pending' | 'approved' | 'rejected'
-export type InboxType = 'access_request' | 'access_approved' | 'access_rejected' | 'note_reply' | 'note_vote' | 'admin_grant' | 'system'
+export type InboxType = 'access_request' | 'access_approved' | 'access_rejected' | 'note_reply' | 'note_vote' | 'admin_grant' | 'system' | 'direct_message'
 
 export interface AccessRequest {
   id: string
@@ -180,6 +180,134 @@ export interface NoteComment {
   body: string
   created_at: string
 }
+
+export interface ChatMessage {
+  id: string
+  sender_id: string
+  body: string
+  created_at: string
+}
+
+export type SystemStatusValue = 'operating' | 'maintenance' | 'down'
+
+export interface SystemStatus {
+  id: string
+  system: string
+  status: SystemStatusValue
+  uptime_pct: number
+  note: string
+  updated_at: string
+}
+
+export const SYSTEM_STATUS_META: Record<SystemStatusValue, { label: string; tone: 'pos' | 'warn' | 'neg'; color: string }> = {
+  operating:   { label: 'Operational', tone: 'pos',  color: '#22c55e' },
+  maintenance: { label: 'Maintenance', tone: 'warn', color: '#f59e0b' },
+  down:        { label: 'Not working', tone: 'neg',  color: '#ef4444' },
+}
+
+export type FinanceKind = 'revenue' | 'cost'
+
+export type FinanceCategory =
+  | 'product_sale' | 'service_sale' | 'closed_deal_commission' | 'other_revenue'
+  | 'materials' | 'utility_bill' | 'office' | 'salary' | 'marketing' | 'software' | 'taxes' | 'other_cost'
+
+export interface FinanceEntry {
+  id: string
+  kind: FinanceKind
+  category: FinanceCategory
+  title: string
+  description: string
+  amount: number
+  entry_date: string
+  deal_id: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export const FINANCE_CATEGORY_META: Record<FinanceCategory, { label: string; kind: FinanceKind }> = {
+  product_sale:           { label: 'Product sale',           kind: 'revenue' },
+  service_sale:           { label: 'Service sale',           kind: 'revenue' },
+  closed_deal_commission: { label: 'Closed deal commission',  kind: 'revenue' },
+  other_revenue:          { label: 'Other revenue',            kind: 'revenue' },
+  materials:              { label: 'Materials',                 kind: 'cost' },
+  utility_bill:           { label: 'Utility bill',              kind: 'cost' },
+  office:                 { label: 'Office',                    kind: 'cost' },
+  salary:                 { label: 'Salary',                    kind: 'cost' },
+  marketing:              { label: 'Marketing',                 kind: 'cost' },
+  software:               { label: 'Software / subscriptions',  kind: 'cost' },
+  taxes:                  { label: 'Taxes',                     kind: 'cost' },
+  other_cost:             { label: 'Other cost',                kind: 'cost' },
+}
+
+export const FINANCE_REVENUE_CATEGORIES: FinanceCategory[] = [
+  'product_sale', 'service_sale', 'closed_deal_commission', 'other_revenue',
+]
+
+export const FINANCE_COST_CATEGORIES: FinanceCategory[] = [
+  'materials', 'utility_bill', 'office', 'salary', 'marketing', 'software', 'taxes', 'other_cost',
+]
+
+/* ---- Scheduled activities (Kanban + Calendar) ---- */
+export type ScheduledActivityType = 'call' | 'meeting' | 'potential_meeting' | 'email' | 'task' | 'reminder'
+export type ScheduledActivityStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled' | 'no_show'
+
+export interface ScheduledActivity {
+  id: string
+  owner_id: string
+  type: ScheduledActivityType
+  status: ScheduledActivityStatus
+  title: string
+  notes: string
+  color: string
+  scheduled_at: string
+  duration_min: number
+  company_id: string | null
+  opportunity_id: string | null
+  visible_on_calendar: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ActivityComment {
+  id: string
+  activity_id: string
+  author_id: string
+  body: string
+  created_at: string
+}
+
+export const ACTIVITY_TYPE_META: Record<ScheduledActivityType, { label: string; color: string }> = {
+  call:               { label: 'Call',              color: '#14b8a6' },
+  meeting:            { label: 'Meeting',           color: '#3b82f6' },
+  potential_meeting: { label: 'Potential meeting', color: '#a855f7' },
+  email:              { label: 'Email',             color: '#f59e0b' },
+  task:               { label: 'Task',              color: '#fb923c' },
+  reminder:           { label: 'Reminder',         color: '#6b7280' },
+}
+
+export const ACTIVITY_TYPES = Object.keys(ACTIVITY_TYPE_META) as ScheduledActivityType[]
+
+export const ACTIVITY_STATUS_META: Record<ScheduledActivityStatus, { label: string; tone: 'info' | 'warn' | 'pos' | 'neg' | 'neutral' }> = {
+  planned:      { label: 'Planned',       tone: 'info' },
+  in_progress:  { label: 'In progress',  tone: 'warn' },
+  completed:    { label: 'Done',          tone: 'pos' },
+  cancelled:   { label: 'Cancelled',    tone: 'neutral' },
+  no_show:     { label: 'No-show',       tone: 'neg' },
+}
+
+export const KANBAN_COLUMNS: ScheduledActivityStatus[] = ['planned', 'in_progress', 'completed', 'cancelled', 'no_show']
+
+export const ACTIVITY_COLOR_PALETTE = [
+  '#3b82f6', // blue
+  '#22c55e', // green
+  '#f59e0b', // amber
+  '#f43f5e', // rose
+  '#a855f7', // purple
+  '#14b8a6', // teal
+  '#fb923c', // orange
+  '#6b7280', // gray
+]
 
 export interface NoteVote {
   id: string

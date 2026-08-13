@@ -93,6 +93,23 @@ body {
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum';
   }
+
+  /* Soft pulse for status dots / bubbles */
+  @keyframes status-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.35); opacity: 0.55; }
+  }
+  .status-pulse {
+    animation: status-pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes status-ring {
+    0%   { transform: scale(0.6); opacity: 0.7; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+  .status-ring {
+    animation: status-ring 1.8s ease-out infinite;
+  }
 }
 
 /* Thin, calm scrollbars */
@@ -119,4 +136,40 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---- Print styles for balance sheets ---- */
+@media print {
+  body {
+    background: #fff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .print-area {
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+  .card, .glass-strong, .print-card {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #d4d4d4 !important;
+    background: #fff !important;
+    break-inside: avoid;
+  }
+  .print-page {
+    page-break-after: always;
+  }
+  .print-page:last-child {
+    page-break-after: auto;
+  }
+}
+.print-only {
+  display: none;
 }
