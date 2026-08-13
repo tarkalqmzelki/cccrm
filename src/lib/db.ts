@@ -6,6 +6,7 @@ import type {
   AccessRequest, InboxMessage, NoteComment, NoteVote, CompanyFollowUp, ChatMessage, SystemStatus, SystemStatusValue,
   FinanceEntry, FinanceCategory, FinanceKind,
   ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
+  MessagePriority, MessageFolder,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -667,18 +668,71 @@ export const db = {
   },
 
   /* ---------- DIRECT MESSAGES (email-like, member -> member) ---------- */
-  async sendDirectMessage(recipientId: string, senderId: string, title: string, body: string): Promise<void> {
+  async sendDirectMessage(opts: {
+    recipientId: string
+    senderId: string
+    title: string
+    body: string
+    priority?: MessagePriority
+    category?: string
+    parentId?: string | null
+    threadId?: string | null
+  }): Promise<string> {
+    const id = uuid()
     const { error } = await supabase!.from('inbox_messages').insert({
-      id: uuid(),
-      recipient_id: recipientId,
-      sender_id: senderId,
+      id,
+      recipient_id: opts.recipientId,
+      sender_id: opts.senderId,
       type: 'direct_message' as never,
-      title: title || '',
-      body: body || '',
+      title: opts.title || '',
+      body: opts.body || '',
       read: false,
       action_url: '/inbox',
       metadata: { kind: 'direct_message' },
+      priority: opts.priority || 'normal',
+      category: opts.category || '',
+      is_starred: false,
+      folder: 'inbox',
+      thread_id: opts.threadId ?? null,
+      parent_id: opts.parentId ?? null,
     })
+    if (error) throw error
+    return id
+  },
+
+  /* List messages I sent to other members (Sent view) */
+  async listInboxSent(senderId: string): Promise<InboxMessage[]> {
+    const { data, error } = await supabase!
+      .from('inbox_messages').select('*')
+      .eq('sender_id', senderId)
+      .eq('type', 'direct_message')
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return (data || []) as InboxMessage[]
+  },
+
+  /* Patch recipient-side fields on an inbox message:
+     priority_override, category_override, is_starred, folder, read */
+  async updateInboxMessage(id: string, patch: Partial<{
+    read: boolean
+    is_starred: boolean
+    folder: MessageFolder
+    priority_override: MessagePriority | null
+    category_override: string | null
+  }>): Promise<void> {
+    const payload: Record<string, unknown> = {}
+    if (patch.read !== undefined) payload.read = patch.read
+    if (patch.is_starred !== undefined) payload.is_starred = patch.is_starred
+    if (patch.folder !== undefined) payload.folder = patch.folder
+    if (patch.priority_override !== undefined) payload.priority_override = patch.priority_override
+    if (patch.category_override !== undefined) payload.category_override = patch.category_override
+    const { error } = await supabase!.from('inbox_messages').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  /* Permanently delete a message (only used for trash / direct messages) */
+  async deleteInboxMessage(id: string): Promise<void> {
+    const { error } = await supabase!.from('inbox_messages').delete().eq('id', id)
     if (error) throw error
   },
 

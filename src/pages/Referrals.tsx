@@ -8,7 +8,8 @@ import { Button } from '../components/ui/Button'
 import { Avatar } from '../components/ui/Avatar'
 import { Badge } from '../components/ui/Badge'
 import { Modal } from '../components/ui/Modal'
-import { Field, Select, Textarea } from '../components/ui/Input'
+import { Field, Textarea } from '../components/ui/Input'
+import { EntityPickerModal, profileEntities } from '../components/EntityPickerModal'
 import { openContextMenu, type CtxItem } from '../components/ui/ContextMenu'
 import { useToast } from '../context/ToastContext'
 import { PageContainer } from '../components/layout/AppShell'
@@ -31,9 +32,28 @@ export default function Referrals() {
     return m
   }, [data])
 
+  /* Non-admins only see referrals where they are the referrer or the
+     referee — never other members' referral networks. Admins see all. */
+  const visibleReferrals = useMemo(() => {
+    if (!data) return [] as Referral[]
+    if (isAdmin) return data.referrals
+    if (!user) return [] as Referral[]
+    return data.referrals.filter((r) => r.referrer_id === user.id || r.referee_id === user.id)
+  }, [data, isAdmin, user])
+
   // tree view: for each person, who they referred
   const tree = useMemo(() => {
     if (!data) return [] as { profile: Profile; referees: Profile[] }[]
+    if (!isAdmin && user) {
+      // Non-admin: show only their own node and the people they referred.
+      const me = data.profiles.find((p) => p.id === user.id)
+      if (!me) return []
+      const myReferees = data.referrals
+        .filter((r) => r.referrer_id === user.id)
+        .map((r) => map[r.referee_id])
+        .filter(Boolean) as Profile[]
+      return myReferees.length > 0 ? [{ profile: me, referees: myReferees }] : []
+    }
     return data.profiles
       .filter((p) => p.role !== 'admin')
       .map((p) => ({
@@ -41,7 +61,7 @@ export default function Referrals() {
         referees: data.referrals.filter((r) => r.referrer_id === p.id).map((r) => map[r.referee_id]).filter(Boolean) as Profile[],
       }))
       .filter((n) => n.referees.length > 0)
-  }, [data, map])
+  }, [data, map, isAdmin, user])
 
   async function remove(r: Referral) {
     await db.deleteReferral(r.id)
@@ -50,7 +70,9 @@ export default function Referrals() {
   }
 
   function ctxItems(r: Referral): CtxItem[] {
-    return isAdmin
+    // Only the referrer (or an admin) can remove their own referral.
+    const canRemove = isAdmin || (user?.id === r.referrer_id)
+    return canRemove
       ? [{ label: 'Remove referral', danger: true, icon: <Trash2 size={15} strokeWidth={1.75} />, onClick: () => remove(r) }]
       : []
   }
@@ -67,18 +89,19 @@ export default function Referrals() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader title="Referral list" desc={`${data?.referrals.length ?? 0} connections`} />
+          <CardHeader title={isAdmin ? 'Referral list' : 'Your referrals'} desc={`${visibleReferrals.length} ${visibleReferrals.length === 1 ? 'connection' : 'connections'}`} />
           {loading ? (
             <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton h-12 w-full rounded-lg" />)}</div>
-          ) : data?.referrals.length === 0 ? (
-            <p className="py-10 text-center text-sm text-ink-400">No referrals yet.</p>
+          ) : visibleReferrals.length === 0 ? (
+            <p className="py-10 text-center text-sm text-ink-400">{isAdmin ? 'No referrals yet.' : 'You haven\'t referred anyone yet.'}</p>
           ) : (
             <div className="divide-y divide-line">
-              {data?.referrals.map((r) => {
+              {visibleReferrals.map((r) => {
                 const a = map[r.referrer_id], b = map[r.referee_id]
                 if (!a || !b) return null
+                const canRemove = isAdmin || (user?.id === r.referrer_id)
                 return (
-                  <div key={r.id} onContextMenu={(e) => isAdmin && openContextMenu(e, ctxItems(r))} className="flex items-center gap-3 py-3 hover:bg-ink-50 -mx-2 px-2 rounded-lg transition-colors">
+                  <div key={r.id} onContextMenu={(e) => canRemove && openContextMenu(e, ctxItems(r))} className="flex items-center gap-3 py-3 hover:bg-ink-50 -mx-2 px-2 rounded-lg transition-colors">
                     <Avatar name={a.full_name} color={a.avatar_color} size={32} />
                     <span className="truncate text-sm font-medium">{a.full_name}</span>
                     <ArrowRight size={15} strokeWidth={1.75} className="shrink-0 text-ink-300" />
@@ -96,11 +119,11 @@ export default function Referrals() {
         </Card>
 
         <Card>
-          <CardHeader title="Network" desc="Referred members" action={<Network size={16} strokeWidth={1.75} className="text-ink-300" />} />
+          <CardHeader title={isAdmin ? 'Network' : 'Your network'} desc={isAdmin ? 'Referred members' : 'People you referred'} action={<Network size={16} strokeWidth={1.75} className="text-ink-300" />} />
           {loading ? (
             <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton h-14 w-full rounded-lg" />)}</div>
           ) : tree.length === 0 ? (
-            <p className="py-8 text-center text-sm text-ink-400">No referral chains yet.</p>
+            <p className="py-8 text-center text-sm text-ink-400">{isAdmin ? 'No referral chains yet.' : 'No one referred by you yet.'}</p>
           ) : (
             <div className="space-y-3">
               {tree.map((n) => (
@@ -139,6 +162,11 @@ function AddReferralModal({ open, onClose, profiles, onSaved }: { open: boolean;
   const [refereeId, setRefereeId] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [referrerPickerOpen, setReferrerPickerOpen] = useState(false)
+  const [refereePickerOpen, setRefereePickerOpen] = useState(false)
+
+  const referrer = profiles.find((p) => p.id === referrerId)
+  const referee = profiles.find((p) => p.id === refereeId)
 
   async function save() {
     if (!referrerId || !refereeId) { push({ tone: 'error', title: 'Select both people' }); return }
@@ -161,27 +189,73 @@ function AddReferralModal({ open, onClose, profiles, onSaved }: { open: boolean;
       open={open}
       onClose={onClose}
       title="Add referral"
-      desc="Record who referred whom into the network."
+      desc="Record who referred whom into the network. Search by name, role, or phone — useful with many members."
       size="md"
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Add referral'}</Button></>}
     >
       <div className="space-y-4">
-        <Field label="Referrer" required>
-          <Select value={referrerId} onChange={(e) => setReferrerId(e.target.value)}>
-            <option value="">Select person…</option>
-            {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </Select>
+        <Field label="Referrer" required hint="The person who made the referral.">
+          <button
+            type="button"
+            onClick={() => setReferrerPickerOpen(true)}
+            className="flex h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-ink-200 focus:outline-none focus:border-ink"
+          >
+            {referrer ? (
+              <>
+                <Avatar name={referrer.full_name} color={referrer.avatar_color} url={referrer.avatar_url} size={24} />
+                <span className="flex-1 text-left truncate">{referrer.full_name}</span>
+                <span className="text-2xs text-ink-400 capitalize">{referrer.role}</span>
+              </>
+            ) : (
+              <span className="flex-1 text-left text-ink-400">Search a member…</span>
+            )}
+          </button>
         </Field>
-        <Field label="Referee" required hint="The person who was referred">
-          <Select value={refereeId} onChange={(e) => setRefereeId(e.target.value)}>
-            <option value="">Select person…</option>
-            {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </Select>
+
+        <Field label="Referee" required hint="The person who was referred.">
+          <button
+            type="button"
+            onClick={() => setRefereePickerOpen(true)}
+            className="flex h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-ink-200 focus:outline-none focus:border-ink"
+          >
+            {referee ? (
+              <>
+                <Avatar name={referee.full_name} color={referee.avatar_color} url={referee.avatar_url} size={24} />
+                <span className="flex-1 text-left truncate">{referee.full_name}</span>
+                <span className="text-2xs text-ink-400 capitalize">{referee.role}</span>
+              </>
+            ) : (
+              <span className="flex-1 text-left text-ink-400">Search a member…</span>
+            )}
+          </button>
         </Field>
+
         <Field label="Note">
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional context" rows={3} />
         </Field>
       </div>
+
+      <EntityPickerModal
+        open={referrerPickerOpen}
+        onClose={() => setReferrerPickerOpen(false)}
+        title="Select referrer"
+        desc="Search by name, role, or phone."
+        entities={profileEntities(profiles)}
+        selectedId={referrerId}
+        onSelect={setReferrerId}
+        allowNone
+      />
+
+      <EntityPickerModal
+        open={refereePickerOpen}
+        onClose={() => setRefereePickerOpen(false)}
+        title="Select referee"
+        desc="Search by name, role, or phone."
+        entities={profileEntities(profiles)}
+        selectedId={refereeId}
+        onSelect={setRefereeId}
+        allowNone
+      />
     </Modal>
   )
 }

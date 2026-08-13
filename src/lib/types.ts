@@ -146,7 +146,10 @@ export interface OpportunityNote {
 
 // ---- Access requests & inbox ----
 export type AccessRequestStatus = 'pending' | 'approved' | 'rejected'
-export type InboxType = 'access_request' | 'access_approved' | 'access_rejected' | 'note_reply' | 'note_vote' | 'admin_grant' | 'system' | 'direct_message'
+export type InboxType =
+  | 'access_request' | 'access_approved' | 'access_rejected'
+  | 'note_reply' | 'note_vote' | 'admin_grant' | 'system'
+  | 'direct_message' | 'activity_assigned' | 'activity_reassigned'
 
 export interface AccessRequest {
   id: string
@@ -160,6 +163,9 @@ export interface AccessRequest {
   responded_at: string | null
 }
 
+export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent'
+export type MessageFolder = 'inbox' | 'archive' | 'trash'
+
 export interface InboxMessage {
   id: string
   recipient_id: string
@@ -171,6 +177,30 @@ export interface InboxMessage {
   action_url: string
   metadata: Record<string, unknown>
   created_at: string
+  // schema28 — email-like fields
+  priority: MessagePriority
+  priority_override: MessagePriority | null
+  category: string
+  category_override: string | null
+  is_starred: boolean
+  folder: MessageFolder
+  thread_id: string | null
+  parent_id: string | null
+}
+
+export const MESSAGE_PRIORITY_META: Record<MessagePriority, { label: string; tone: 'neutral' | 'info' | 'warn' | 'neg'; color: string; weight: number }> = {
+  low:    { label: 'Low',    tone: 'neutral', color: '#6b7280', weight: 0 },
+  normal: { label: 'Normal', tone: 'neutral', color: '#9ca3af', weight: 1 },
+  high:   { label: 'High',   tone: 'warn',    color: '#f59e0b', weight: 2 },
+  urgent: { label: 'Urgent', tone: 'neg',    color: '#ef4444', weight: 3 },
+}
+
+export const MESSAGE_PRIORITIES: MessagePriority[] = ['low', 'normal', 'high', 'urgent']
+
+export const MESSAGE_FOLDER_META: Record<MessageFolder, { label: string }> = {
+  inbox:   { label: 'Inbox' },
+  archive: { label: 'Archive' },
+  trash:   { label: 'Trash' },
 }
 
 export interface NoteComment {

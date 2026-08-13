@@ -138,24 +138,45 @@ body {
   }
 }
 
-/* ---- Print styles for balance sheets ---- */
+/* ---- Print styles for official balance sheet ----
+ *
+ * Strategy: when printing, we hide the entire app (#root) and render
+ * only the dedicated .print-document element, which lives outside the
+ * normal on-screen UI. The on-screen modal preview is marked .no-print
+ * so users see a friendly in-platform preview, but the actual PDF that
+ * comes out of window.print() is the formal SEC 10-K-style document.
+ */
+.print-only {
+  display: none;
+}
+
 @media print {
   body {
     background: #fff !important;
   }
+
+  /* Hide the entire SPA root, then opt back in only the formal document */
+  #root {
+    display: none !important;
+  }
+  .print-document {
+    display: block !important;
+    position: static !important;
+  }
+
+  /* Back-compat with any legacy .no-print helpers inside the app */
   .no-print {
     display: none !important;
   }
-  .print-only {
-    display: block !important;
+
+  /* Page setup — A4/Letter, narrow margins, no header/footer chrome */
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
   }
-  .print-area {
-    position: static !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    max-width: none !important;
-  }
-  .card, .glass-strong, .print-card {
+
+  /* Generic clean card look used inside the formal document */
+  .print-card {
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -163,13 +184,19 @@ body {
     background: #fff !important;
     break-inside: avoid;
   }
+
   .print-page {
     page-break-after: always;
   }
   .print-page:last-child {
     page-break-after: auto;
   }
-}
-.print-only {
-  display: none;
+
+  /* Crisp black text on white for print, never scaled-down fonts */
+  .print-document,
+  .print-document * {
+    color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }

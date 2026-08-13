@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Calendar, Trash2, MessageSquare, Pencil, Plus, EyeOff, Eye } from 'lucide-react'
+import { Calendar, Trash2, MessageSquare, Pencil, Plus, EyeOff, Eye, User as UserIcon, Building2, Phone, Mail, Users, Link2, ListTodo, Bell, X } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
-import { Input, Textarea, Select, Field } from './ui/Input'
+import { Input, Textarea, Field } from './ui/Input'
 import { Avatar } from './ui/Avatar'
+import { SegmentedControl } from './ui/SegmentedControl'
+import { DateTimePicker } from './ui/DateTimePicker'
+import { EntityPickerModal, profileEntities, companyEntities } from './EntityPickerModal'
 import { useToast } from '../context/ToastContext'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/db'
@@ -17,6 +20,15 @@ import {
 } from '../lib/types'
 import type { ScheduledActivityType, ScheduledActivityStatus, ScheduledActivity, Company, Profile, ActivityComment } from '../lib/types'
 import { dateLong } from '../lib/format'
+
+const TYPE_ICON: Record<ScheduledActivityType, React.ReactNode> = {
+  call: <Phone size={13} strokeWidth={1.75} />,
+  meeting: <Users size={13} strokeWidth={1.75} />,
+  potential_meeting: <Link2 size={13} strokeWidth={1.75} />,
+  email: <Mail size={13} strokeWidth={1.75} />,
+  task: <ListTodo size={13} strokeWidth={1.75} />,
+  reminder: <Bell size={13} strokeWidth={1.75} />,
+}
 
 type Draft = {
   title: string
@@ -47,14 +59,7 @@ function localInputToIso(s: string): string {
 }
 
 export function ActivityModal({
-  open,
-  onClose,
-  onSaved,
-  activity,
-  profiles,
-  companies,
-  defaultOwnerId,
-  defaultDate,
+  open, onClose, onSaved, activity, profiles, companies, defaultOwnerId, defaultDate,
 }: {
   open: boolean
   onClose: () => void
@@ -71,6 +76,8 @@ export function ActivityModal({
   const [tab, setTab] = useState<'edit' | 'comments'>('edit')
   const [saving, setSaving] = useState(false)
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [ownerPickerOpen, setOwnerPickerOpen] = useState(false)
+  const [leadPickerOpen, setLeadPickerOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -106,11 +113,7 @@ export function ActivityModal({
     }
   }, [open, activity, defaultDate, defaultOwnerId])
 
-  /* The companies the current user can link to:
-     - admins: any company
-     - sellers: only companies they own (created_by === user.id)
-     For other users' activities (admin editing), we still want to show all
-     companies for admins. */
+  /* Companies a non-admin can link to (own companies only). Admins can link to any. */
   const linkableCompanies = useMemo(() => {
     if (isAdmin) return companies
     return companies.filter((c) => c.created_by === user?.id)
@@ -170,18 +173,21 @@ export function ActivityModal({
     }
   }
 
+  const ownerProfile = profiles.find((p) => p.id === draft.ownerId)
+  const linkedCompany = linkableCompanies.find((c) => c.id === draft.companyId)
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pr-6">
           <Calendar size={18} strokeWidth={1.75} className="text-info" />
           {isEditing ? 'Edit activity' : 'New activity'}
         </div>
       }
       desc={isEditing && activity ? `${ACTIVITY_TYPE_META[activity.type].label} · ${dateLong(activity.scheduled_at)}` : 'A meeting, call, or task for your schedule.'}
-      size="md"
+      size="xl"
       footer={
         <>
           {isEditing && canManage && (
@@ -215,46 +221,119 @@ export function ActivityModal({
       )}
 
       {tab === 'edit' ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <Field label="Title" required>
             <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="e.g. Discovery call with ACME" disabled={!canManage} />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Type">
-              <Select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as ScheduledActivityType })} disabled={!canManage}>
-                {ACTIVITY_TYPES.map((t) => <option key={t} value={t}>{ACTIVITY_TYPE_META[t].label}</option>)}
-              </Select>
-            </Field>
-            <Field label="Status">
-              <Select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as ScheduledActivityStatus })} disabled={!canManage}>
-                {KANBAN_COLUMNS.map((s) => <option key={s} value={s}>{ACTIVITY_STATUS_META[s].label}</option>)}
-              </Select>
-            </Field>
-          </div>
+          {/* Type — custom segmented control */}
+          <Field label="Type">
+            <SegmentedControl<ScheduledActivityType>
+              options={ACTIVITY_TYPES.map((t) => ({
+                value: t,
+                label: ACTIVITY_TYPE_META[t].label,
+                icon: TYPE_ICON[t],
+                color: ACTIVITY_TYPE_META[t].color,
+              }))}
+              value={draft.type}
+              onChange={(v) => setDraft({ ...draft, type: v })}
+              disabled={!canManage}
+              columns={6}
+            />
+          </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Status — custom segmented control */}
+          <Field label="Status">
+            <SegmentedControl<ScheduledActivityStatus>
+              options={KANBAN_COLUMNS.map((s) => ({
+                value: s,
+                label: ACTIVITY_STATUS_META[s].label,
+              }))}
+              value={draft.status}
+              onChange={(v) => setDraft({ ...draft, status: v })}
+              disabled={!canManage}
+              columns={5}
+            />
+          </Field>
+
+          {/* When + Duration — stack on mobile, side-by-side on sm+ */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="When" required>
-              <Input type="datetime-local" value={draft.scheduledAt} onChange={(e) => setDraft({ ...draft, scheduledAt: e.target.value })} disabled={!canManage} />
+              <DateTimePicker
+                value={draft.scheduledAt}
+                onChange={(v) => setDraft({ ...draft, scheduledAt: v })}
+                disabled={!canManage}
+                outputIso={false}
+              />
             </Field>
             <Field label="Duration (minutes)">
-              <Input type="number" min={5} step={5} value={draft.durationMin} onChange={(e) => setDraft({ ...draft, durationMin: Number(e.target.value) })} disabled={!canManage} />
+              <div className="flex flex-wrap gap-1.5">
+                {[15, 30, 45, 60, 90, 120].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={!canManage}
+                    onClick={() => setDraft({ ...draft, durationMin: m })}
+                    className={`rounded-lg px-2.5 py-2 text-2xs font-medium transition-colors ${
+                      draft.durationMin === m ? 'bg-ink text-white' : 'bg-ink-50 text-ink-600 hover:bg-ink-100'
+                    } disabled:opacity-50 disabled:pointer-events-none`}
+                  >
+                    {m < 60 ? `${m}m` : `${m / 60}h`}
+                  </button>
+                ))}
+                <Input
+                  type="number"
+                  min={5}
+                  step={5}
+                  value={draft.durationMin}
+                  onChange={(e) => setDraft({ ...draft, durationMin: Number(e.target.value) })}
+                  disabled={!canManage}
+                  className="h-9 w-20"
+                />
+              </div>
             </Field>
           </div>
 
-          {isAdmin && (
-            <Field label="Owner" hint="Admins can assign activities to other members">
-              <Select value={draft.ownerId} onChange={(e) => setDraft({ ...draft, ownerId: e.target.value })}>
-                {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name} · {p.role}</option>)}
-              </Select>
-            </Field>
-          )}
+          {/* Owner — searchable picker (any user can assign to anyone) */}
+          <Field label="Owner" hint="Assign this activity to another member. They'll receive a notification in their inbox.">
+            <button
+              type="button"
+              disabled={!canManage}
+              onClick={() => setOwnerPickerOpen(true)}
+              className="flex h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-ink-200 focus:outline-none focus:border-ink disabled:bg-ink-50 disabled:text-ink-400"
+            >
+              {ownerProfile ? (
+                <>
+                  <Avatar name={ownerProfile.full_name} color={ownerProfile.avatar_color} url={ownerProfile.avatar_url} size={24} />
+                  <span className="flex-1 text-left truncate">{ownerProfile.full_name}</span>
+                  <span className="text-2xs text-ink-400 capitalize">{ownerProfile.role}</span>
+                </>
+              ) : (
+                <span className="flex-1 text-left text-ink-400">Select an owner…</span>
+              )}
+            </button>
+          </Field>
 
+          {/* Linked lead — searchable picker */}
           <Field label="Linked lead" hint={isAdmin ? 'Optional — admin can link to any lead.' : 'Optional — only leads you own can be linked. You can also create an unlinked meeting.'}>
-            <Select value={draft.companyId} onChange={(e) => setDraft({ ...draft, companyId: e.target.value })} disabled={!canManage}>
-              <option value="">— No linked lead —</option>
-              {linkableCompanies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
+            <button
+              type="button"
+              disabled={!canManage}
+              onClick={() => setLeadPickerOpen(true)}
+              className="flex h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-ink-200 focus:outline-none focus:border-ink disabled:bg-ink-50 disabled:text-ink-400"
+            >
+              {linkedCompany ? (
+                <>
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-ink-50 text-ink-500">
+                    <Building2 size={13} strokeWidth={1.75} />
+                  </span>
+                  <span className="flex-1 text-left truncate">{linkedCompany.name}</span>
+                  {linkedCompany.industry && <span className="text-2xs text-ink-400">{linkedCompany.industry}</span>}
+                </>
+              ) : (
+                <span className="flex-1 text-left text-ink-400">— No linked lead —</span>
+              )}
+            </button>
           </Field>
 
           <Field label="Color" hint="Pick a highlight color, or leave empty to use the type default.">
@@ -285,6 +364,7 @@ export function ActivityModal({
             <Textarea rows={4} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Agenda, prep notes, etc." disabled={!canManage} />
           </Field>
 
+          {/* Show in shared calendar — admin only */}
           {isAdmin && (
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3 transition-colors hover:bg-ink-50">
               <span className="mt-0.5 shrink-0">
@@ -318,6 +398,30 @@ export function ActivityModal({
       ) : (
         activity && <CommentsTab activityId={activity.id} profiles={profiles} currentUserId={user.id} isAdmin={isAdmin} />
       )}
+
+      {/* Owner picker */}
+      <EntityPickerModal
+        open={ownerPickerOpen}
+        onClose={() => setOwnerPickerOpen(false)}
+        title="Assign owner"
+        desc="Search by name, role, or phone. The owner will be notified."
+        entities={profileEntities(profiles)}
+        selectedId={draft.ownerId}
+        onSelect={(id) => setDraft({ ...draft, ownerId: id })}
+      />
+
+      {/* Linked lead picker */}
+      <EntityPickerModal
+        open={leadPickerOpen}
+        onClose={() => setLeadPickerOpen(false)}
+        title="Linked lead"
+        desc="Search by company name, industry, or domain."
+        entities={companyEntities(linkableCompanies)}
+        selectedId={draft.companyId}
+        onSelect={(id) => setDraft({ ...draft, companyId: id })}
+        allowNone
+        noneLabel="— No linked lead —"
+      />
     </Modal>
   )
 }

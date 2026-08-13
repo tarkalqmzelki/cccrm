@@ -17,6 +17,7 @@ import { PageContainer } from '../components/layout/AppShell'
 import { useToast } from '../context/ToastContext'
 import { openContextMenu, type CtxItem } from '../components/ui/ContextMenu'
 import { useAuth } from '../context/AuthContext'
+import { FormalBalanceSheetDocument } from '../components/FormalBalanceSheetDocument'
 import {
   FINANCE_CATEGORY_META,
   FINANCE_REVENUE_CATEGORIES,
@@ -370,10 +371,24 @@ export default function Finances() {
         onSaved={reload}
       />
 
-      {/* Print preview / balance sheet */}
+      {/* Print preview / balance sheet (on-screen friendly view; the
+          actual printed PDF is the formal SEC-style document rendered
+          below with .print-only) */}
       <PrintBalanceSheetModal
         open={printOpen}
         onClose={() => setPrintOpen(false)}
+        entries={filtered}
+        periodLabel={periodLabel}
+        fromDate={fromDate}
+        toDate={toDate}
+        dealMap={dealMap}
+      />
+
+      {/* Formal SEC 10-K-style document — hidden on screen, visible
+          only when the browser enters print mode (see index.css
+          @media print rule that hides #root and shows .print-document).
+          This is what actually gets printed when the user clicks Print. */}
+      <FormalBalanceSheetDocument
         entries={filtered}
         periodLabel={periodLabel}
         fromDate={fromDate}
@@ -582,16 +597,18 @@ function PrintBalanceSheetModal({
       open={open}
       onClose={onClose}
       title="Balance sheet preview"
-      desc="Use your browser's print dialog. The preview below is what will be printed — sidebars and buttons are hidden."
+      desc="This is your friendly in-platform preview. When you click Print, a formal SEC 10-K-style document with cover page, Parts I & II, Schedules A/B, and a certification page will be produced instead."
       size="lg"
+      className="no-print"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Close</Button>
-          <Button icon={<Printer size={14} strokeWidth={1.75} />} onClick={() => window.print()}>Print</Button>
+          <Button icon={<Printer size={14} strokeWidth={1.75} />} onClick={() => window.print()}>Print formal document</Button>
         </>
       }
     >
-      <div className="print-area">
+      {/* This preview is hidden from print — only the formal document prints */}
+      <div className="no-print print-area">
         <div className="print-card rounded-xl border border-line p-6">
           {/* Header */}
           <div className="flex items-start justify-between gap-4 border-b border-line pb-4">

@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Phone, Users, Link2, Mail, ListTodo, Bell, MoreHorizontal } from 'lucide-react'
+import {
+  Plus, Phone, Users, Link2, Mail, ListTodo, Bell, MoreHorizontal,
+  Pencil, Trash2, Check, X, Play, Eye,
+} from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useActivitiesData } from '../lib/hooks/useActivitiesData'
 import { PageContainer } from '../components/layout/AppShell'
@@ -10,8 +13,10 @@ import { Badge } from '../components/ui/Badge'
 import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { ActivityModal } from '../components/ActivityModal'
+import { ActivityInfoModal } from '../components/ActivityInfoModal'
 import { ActivitiesStatsPanel } from '../components/ActivitiesStatsPanel'
 import { useToast } from '../context/ToastContext'
+import { openContextMenu, type CtxItem } from '../components/ui/ContextMenu'
 import { db } from '../lib/db'
 import {
   ACTIVITY_TYPE_META,
@@ -37,14 +42,16 @@ export default function ActivitiesKanban() {
     loading, reload, activities, profiles, companies, deals,
     profileMap, companyMap, stats,
   } = useActivitiesData()
-  const [modalOpen, setModalOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<ScheduledActivity | null>(null)
+  const [infoOpen, setInfoOpen] = useState(false)
+  const [infoActivity, setInfoActivity] = useState<ScheduledActivity | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<ScheduledActivityStatus | null>(null)
 
   const isAdmin = user?.role === 'admin'
 
-  // Kanban is always personal — only the current user's own activities.
+  /* Kanban is always personal — only the current user's own activities. */
   const visible = useMemo(
     () => (user ? activities.filter((a) => a.owner_id === user.id) : []),
     [activities, user?.id],
@@ -62,8 +69,55 @@ export default function ActivitiesKanban() {
     return !!user && (a.owner_id === user.id || user.role === 'admin')
   }
 
-  function openNew() { setEditing(null); setModalOpen(true) }
-  function openEdit(a: ScheduledActivity) { setEditing(a); setModalOpen(true) }
+  function openNew() { setEditing(null); setEditOpen(true) }
+  function openEdit(a: ScheduledActivity) { setEditing(a); setEditOpen(true) }
+  function openInfo(a: ScheduledActivity) { setInfoActivity(a); setInfoOpen(true) }
+
+  /* Left-click on a card opens the read-only info modal; from there,
+     the user can hit "Edit" to switch to the edit modal. */
+  function onCardClick(a: ScheduledActivity) { openInfo(a) }
+
+  function cardContextItems(a: ScheduledActivity): CtxItem[] {
+    const items: CtxItem[] = [
+      { label: 'Open', icon: <Eye size={14} strokeWidth={1.75} />, onClick: () => openInfo(a) },
+    ]
+    if (canManage(a)) {
+      items.push(
+        { divider: true },
+        { label: 'Edit', icon: <Pencil size={14} strokeWidth={1.75} />, onClick: () => openEdit(a) },
+        { label: 'Mark in progress', icon: <Play size={14} strokeWidth={1.75} />, onClick: () => setStatus(a, 'in_progress'), disabled: a.status === 'in_progress' },
+        { label: 'Mark done', icon: <Check size={14} strokeWidth={1.75} />, onClick: () => setStatus(a, 'completed'), disabled: a.status === 'completed' },
+        { label: 'Mark no-show', icon: <X size={14} strokeWidth={1.75} />, onClick: () => setStatus(a, 'no_show'), disabled: a.status === 'no_show' },
+        { label: 'Cancel activity', icon: <X size={14} strokeWidth={1.75} />, onClick: () => setStatus(a, 'cancelled'), disabled: a.status === 'cancelled' },
+        { divider: true },
+        { label: 'Delete', danger: true, icon: <Trash2 size={14} strokeWidth={1.75} />, onClick: () => destroy(a) },
+      )
+    }
+    return items
+  }
+
+  async function setStatus(a: ScheduledActivity, status: ScheduledActivityStatus) {
+    if (!canManage(a)) return
+    try {
+      await db.updateScheduledActivity(a.id, { status })
+      push({ tone: 'success', title: `Marked ${ACTIVITY_STATUS_META[status].label}` })
+      reload()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not update', desc: e?.message })
+    }
+  }
+
+  async function destroy(a: ScheduledActivity) {
+    if (!canManage(a)) return
+    if (!confirm('Delete this activity?')) return
+    try {
+      await db.deleteScheduledActivity(a.id)
+      push({ tone: 'success', title: 'Activity deleted' })
+      reload()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not delete', desc: e?.message })
+    }
+  }
 
   async function onDrop(status: ScheduledActivityStatus) {
     setDragOver(null)
@@ -89,7 +143,7 @@ export default function ActivitiesKanban() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Kanban</h1>
-          <p className="mt-1 text-sm text-ink-400">Your personal board. Drag cards across stages to update their status.</p>
+          <p className="mt-1 text-sm text-ink-400">Your personal board. Drag cards across stages to update their status. Click a card to see details, right-click to edit.</p>
         </div>
         <Button icon={<Plus size={15} strokeWidth={1.75} />} onClick={openNew}>New activity</Button>
       </div>
@@ -130,7 +184,8 @@ export default function ActivitiesKanban() {
                             key={a.id}
                             activity={a}
                             draggable={canManage(a)}
-                            onClick={() => openEdit(a)}
+                            onClick={() => onCardClick(a)}
+                            onContext={(e) => openContextMenu(e, cardContextItems(a))}
                             onDragStart={() => setDragId(a.id)}
                             onDragEnd={() => setDragId(null)}
                             profileMap={profileMap}
@@ -161,14 +216,26 @@ export default function ActivitiesKanban() {
         </div>
       </div>
 
+      {/* Edit modal */}
       <ActivityModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
         onSaved={reload}
         activity={editing}
         profiles={profiles}
         companies={companies}
         defaultOwnerId={user?.id || ''}
+      />
+
+      {/* Info modal (read-only, with Edit button) */}
+      <ActivityInfoModal
+        open={infoOpen}
+        onClose={() => setInfoOpen(false)}
+        activity={infoActivity}
+        profiles={profiles}
+        companies={companies}
+        onEdit={(a) => { setInfoOpen(false); openEdit(a) }}
+        onChanged={reload}
       />
     </PageContainer>
   )
@@ -178,11 +245,12 @@ export default function ActivitiesKanban() {
 /* Card                                                               */
 /* ------------------------------------------------------------------ */
 function KanbanCard({
-  activity, draggable, onClick, onDragStart, onDragEnd, profileMap, companyMap,
+  activity, draggable, onClick, onContext, onDragStart, onDragEnd, profileMap, companyMap,
 }: {
   activity: ScheduledActivity
   draggable: boolean
   onClick: () => void
+  onContext: (e: React.MouseEvent) => void
   onDragStart: () => void
   onDragEnd: () => void
   profileMap: Record<string, any>
@@ -201,6 +269,7 @@ function KanbanCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}
+      onContextMenu={onContext}
       className="group cursor-pointer rounded-xl border border-line bg-surface p-3 shadow-sm hover:border-ink-200 transition-colors"
       style={{ borderLeftColor: color, borderLeftWidth: 3 }}
     >

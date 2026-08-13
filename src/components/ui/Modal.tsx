@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface Props {
   open: boolean
@@ -9,12 +10,26 @@ interface Props {
   desc?: ReactNode
   children: ReactNode
   footer?: ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
+  /** Backdrop opacity. Default 'normal' (30%). Use 'strong' (60%) for
+   *  nested modals so the parent modal's white border doesn't show
+   *  through as faint corner lines. */
+  backdrop?: 'normal' | 'strong'
+  /** Extra classes for the outermost wrapper. Use 'no-print' to keep a
+   *  modal from showing up in the printed output (e.g. a preview modal
+   *  that's portaled to document.body and therefore escapes the
+   *  #root { display: none } print rule). */
+  className?: string
 }
 
-const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' }
+const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-3xl' }
 
-export function Modal({ open, onClose, title, desc, children, footer, size = 'md' }: Props) {
+const backdropClass = {
+  normal: 'bg-ink-900/30',
+  strong: 'bg-ink-900/60',
+}
+
+export function Modal({ open, onClose, title, desc, children, footer, size = 'md', backdrop = 'normal', className = '' }: Props) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -26,16 +41,16 @@ export function Modal({ open, onClose, title, desc, children, footer, size = 'md
     }
   }, [open, onClose])
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-0 sm:p-6">
+        <div className={`fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-0 sm:p-6 ${className}`}>
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="absolute inset-0 bg-ink-900/30"
+            className={`absolute inset-0 ${backdropClass[backdrop]}`}
             onClick={onClose}
           />
           <motion.div
@@ -61,6 +76,7 @@ export function Modal({ open, onClose, title, desc, children, footer, size = 'md
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }

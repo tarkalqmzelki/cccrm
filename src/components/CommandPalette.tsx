@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Building2, Briefcase, Wallet, FileText, Users, Network,
-  CornerDownLeft, Lock, ArrowRight, Phone, Mail, Sparkles,
+  CornerDownLeft, Lock, ArrowRight, Phone, Mail, Sparkles, FileText as SummaryIcon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/db'
@@ -225,9 +225,18 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   function select(r?: SearchResult) {
     if (!r) return
-    if (r.locked) return
+    /* Locked leads (companies) are still navigable — the CompanyDetail
+       page's Summary tab is public, so the user can see the summary
+       even without access to the rest of the lead. */
+    if (r.locked && r.type !== 'lead') return
     onClose()
     if (r.href) navigate(r.href)
+  }
+
+  function openSummary(r?: SearchResult) {
+    if (!r || !r.href) return
+    onClose()
+    navigate(r.href)
   }
 
   /* -- Close on outside click handled by parent modal; ESC handled here -- */
@@ -307,15 +316,18 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                       {arr.map((r) => {
                         const idx = runningIdx++
                         const isActive = idx === activeIdx
+                        /* Locked leads are clickable (they open the public Summary
+                           tab). Other locked results stay disabled. */
+                        const isLockedLead = r.locked && r.type === 'lead'
+                        const clickable = !r.locked || isLockedLead
                         return (
-                          <button
+                          <div
                             key={r.id}
                             onMouseEnter={() => setActiveIdx(idx)}
-                            onClick={() => select(r)}
-                            disabled={r.locked}
-                            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
-                              isActive ? (r.locked ? 'bg-ink-50' : 'bg-ink-100') : 'hover:bg-ink-50'
-                            } ${r.locked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+                            className={`relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                              isActive ? (r.locked && !isLockedLead ? 'bg-ink-50' : 'bg-ink-100') : 'hover:bg-ink-50'
+                            } ${clickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
+                            onClick={() => clickable && select(r)}
                           >
                             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ink-50 text-ink-500">
                               <r.icon size={14} strokeWidth={1.75} />
@@ -324,9 +336,22 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                               <p className="truncate text-sm font-medium text-ink">{r.title}</p>
                               <p className="truncate text-2xs text-ink-400">{r.subtitle}</p>
                             </div>
-                            {r.locked && <Lock size={13} strokeWidth={1.75} className="text-ink-300" />}
+                            {r.locked && !isLockedLead && <Lock size={13} strokeWidth={1.75} className="text-ink-300" />}
+                            {isLockedLead && (
+                              <>
+                                <Lock size={13} strokeWidth={1.75} className="text-ink-300" />
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); openSummary(r) }}
+                                  className="inline-flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-2xs font-medium text-ink-600 hover:border-ink-200 hover:bg-ink-50 transition-colors"
+                                  title="Open the public summary of this lead"
+                                >
+                                  <SummaryIcon size={10} strokeWidth={1.75} /> Summary
+                                </button>
+                              </>
+                            )}
                             {isActive && !r.locked && <ArrowRight size={14} strokeWidth={1.75} className="text-ink-400" />}
-                          </button>
+                          </div>
                         )
                       })}
                     </div>
