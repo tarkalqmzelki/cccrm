@@ -69,7 +69,7 @@ export async function subscribePush(userId: string): Promise<boolean> {
     throw new Error('Service worker registration is missing. Reload the page and try again.')
   }
 
-  // Step 2: ensure OS-level permission (iOS shows the prompt here).
+  // Step 2: ensure OS-level permission (iOS shows the prompt here, in the PWA).
   if (Notification.permission === 'default') {
     const perm = await Notification.requestPermission()
     if (perm !== 'granted') {
@@ -131,15 +131,20 @@ export async function subscribePush(userId: string): Promise<boolean> {
     }
   }
 
+  // Step 5: persist the FULL subscription object as JSONB (the new
+  // format expected by the web-push library).  Also keep the legacy
+  // per-field columns populated so older code paths keep working.
   const p256dh = sub.getKey('p256dh')
   const auth = sub.getKey('auth')
   if (!p256dh || !auth) {
     throw new Error('Push subscription is missing keys (p256dh/auth). Try unsubscribing and re-enabling.')
   }
+  const fullSub = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string }, expirationTime: number | null }
   await db.addPushSubscription(userId, {
     endpoint: sub.endpoint,
     p256dh: b64uEncode(p256dh as ArrayBuffer),
     auth_key: b64uEncode(auth as ArrayBuffer),
+    subscription: fullSub,
   })
   return true
 }

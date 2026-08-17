@@ -1,186 +1,42 @@
-// Calista Concept — send-push Edge Function
+// Calista Concept — send-push Edge Function (rewrite using `web-push`)
 //
-// Called by the `trg_notify_push` Postgres trigger (via pg_net) every time
-// an `inbox_messages` row is inserted.  Looks up the recipient's push
-// subscriptions, the admin-controlled template, and the user's per-type
-// preferences, then sends a Web Push to every subscribed device.
+// Replaces the hand-rolled VAPID + RFC 8188 crypto with the battle-tested
+// `web-push` npm package.  Same trigger contract, same push_log writes,
+// same template + preference logic — just reliable crypto.
 //
-// Environment (set via `supabase secrets set …` or dashboard):
-//   VAPID_SUBJECT           — e.g. "mailto:ops@calistaconcept.eu"
-//   VAPID_PUBLIC_KEY        — base64url-encoded P-256 public key
-//   VAPID_PRIVATE_KEY       — base64url-encoded P-256 private key
+// Two payload formats are accepted:
+//   1. Database Webhook (recommended): { type, table, record, old_record }
+//      where `record` is the full inbox_messages row.  Configured in the
+//      Supabase dashboard (Database → Webhooks → New).
+//   2. Direct call (legacy): { recipient_id, title, body, action_url,
+//      metadata, notification_key, inbox_type }
 //
-// Authorization: callers must present the project's service-role JWT in
-// the `Authorization: Bearer …` header.  The trigger stores that bearer
-// in `app_secrets.edge_bearer`.  Browsers / external callers are denied.
+// Authorization: callers must present the project's service-role JWT
+// in `Authorization: Bearer …`.  The Database Webhook adds this header
+// automatically when configured with the service key.
 
+import webPush from 'npm:web-push@3.6.7'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:ops@calistaconcept.eu'
+const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:ops@calistaconcept.com'
 const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') ?? ''
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') ?? ''
 
-// ---------- base64url helpers ----------
-function b64uDecode(s: string): Uint8Array {
-  s = s.replace(/-/g, '+').replace(/_/g, '/')
-  while (s.length % 4) s += '='
-  const bin = atob(s)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out
-}
-function b64uEncode(buf: ArrayBuffer | Uint8Array): string {
-  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
-  let bin = ''
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+// Configure the web-push library once.  The library handles VAPID JWT
+// generation (with the correct `aud` claim based on the endpoint origin),
+// RFC 8188 aes128gcm content encoding, ECDSA DER signature, and TTL.
+webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+
+// ---------- helpers ----------
+function json(obj: unknown, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
 }
 
-const ENC = new TextEncoder()
-
-// ---------- VAPID JWT (ES256) ----------
-//
-// Per RFC 8292 the `aud` claim MUST be the origin of the push service
-// endpoint (e.g. https://fcm.googleapis.com for Chrome, https://web.push.apple.com
-// for Safari).  Using any other value (e.g. the Supabase URL) causes
-// the push service to reject the VAPID JWT with 401/403 and silently
-// drop the notification — no error surfaces in the browser.
-async function vapidJwt(endpoint: string): Promise<string> {
-  const aud = new URL(endpoint).origin
-  const header = b64uEncode(ENC.encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })))
-  const payload = b64uEncode(
-    ENC.encode(
-      JSON.stringify({
-        aud,
-        exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
-        sub: VAPID_SUBJECT,
-      }),
-    ),
-  )
-  const data = `${header}.${payload}`
-  const key = await crypto.subtle.importKey(
-    'pkcs8',
-    b64uDecode(VAPID_PRIVATE_KEY),
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['sign'],
-  )
-  const rawSig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, ENC.encode(data)))
-  // Web Crypto returns r||s as 64 raw bytes; JWT needs ASN.1 DER.
-  return `${data}.${b64uEncode(ecRawToDer(rawSig))}`
-}
-
-function ecRawToDer(sig: Uint8Array): Uint8Array {
-  const encInt = (b: Uint8Array) => {
-    let i = 0
-    while (i < b.length - 1 && b[i] === 0) i++
-    const trim = b.subarray(i)
-    const pad = trim[0] & 0x80 ? 1 : 0
-    const out = new Uint8Array(trim.length + pad + (pad ? 1 : 0))
-    if (pad) out[1] = 0x00
-    out.set(trim, 1 + pad)
-    return out
-  }
-  const r = encInt(sig.subarray(0, 32))
-  const s = encInt(sig.subarray(32))
-  const body = new Uint8Array(2 + r.length + 2 + s.length)
-  body[0] = 0x30
-  body[1] = body.length - 2
-  let p = 2
-  body[p++] = 0x02; body[p++] = r.length; body.set(r, p); p += r.length
-  body[p++] = 0x02; body[p++] = s.length; body.set(s, p)
-  return body
-}
-
-// ---------- RFC 8188 aes128gcm content encoding ----------
-async function encryptPayload(payload: string, p256dh: string, auth: string): Promise<Uint8Array> {
-  const uaPub = b64uDecode(p256dh)
-  const authBuf = b64uDecode(auth)
-
-  const userKey = await crypto.subtle.importKey('raw', uaPub, { name: 'ECDH', namedCurve: 'P-256' }, false, [])
-  const appPair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits'])
-  const appPub = new Uint8Array(await crypto.subtle.exportKey('raw', appPair.publicKey))
-
-  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: userKey }, appPair.privateKey, 256))
-
-  // IKM = auth || shared_secret
-  const ikm = new Uint8Array(authBuf.length + shared.length)
-  ikm.set(authBuf, 0)
-  ikm.set(shared, authBuf.length)
-
-  // info = "WebPush: info\0" || ua_pub || as_pub
-  const info = new Uint8Array(20 + uaPub.length + appPub.length)
-  info.set(ENC.encode('WebPush: info\u0000'), 0)
-  info.set(uaPub, 20)
-  info.set(appPub, 20 + uaPub.length)
-
-  const prk = await crypto.subtle.importKey('raw', ikm, { name: 'HKDF' }, false, ['deriveKey'])
-  const contentKey = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(16), info },
-    prk,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt'],
-  )
-
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, contentKey, ENC.encode(payload)))
-
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  const header = new Uint8Array(16 + 4 + 1 + appPub.length)
-  header.set(salt, 0)
-  new DataView(header.buffer).setUint32(16, 4096)
-  header[20] = appPub.length
-  header.set(appPub, 21)
-
-  const padding = new Uint8Array([0x02]) // delimiter (end-of-record)
-  const record = new Uint8Array(header.length + ct.length + padding.length)
-  record.set(header, 0)
-  record.set(ct, header.length)
-  record.set(padding, header.length + ct.length)
-  return record
-}
-
-/**
- * Returns 'ok' on HTTP 2xx, 'gone' on 404/410 (subscription expired),
- * 'error' otherwise — and writes the failure detail to push_log via
- * the caller (we return the status + body in lastError).
- */
-let lastError: string = ''
-function lastPushError(): string { return lastError }
-
-async function sendPush(sub: { endpoint: string; p256dh: string; auth_key: string }, payload: string, vapid: string): Promise<'ok' | 'gone' | 'error'> {
-  lastError = ''
-  try {
-    const encrypted = await encryptPayload(payload, sub.p256dh, sub.auth_key)
-    const res = await fetch(sub.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Encoding': 'aes128gcm',
-        'TTL': '86400',
-        'Authorization': `vapid t=${vapid}, k=${VAPID_PUBLIC_KEY}`,
-        'Content-Type': 'application/octet-stream',
-      },
-      body: encrypted,
-    })
-    if (res.status === 404 || res.status === 410) return 'gone'
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      lastError = `HTTP ${res.status} from ${new URL(sub.endpoint).origin}: ${text || res.statusText}`
-      console.warn('push failed', sub.endpoint, res.status, text)
-      return 'error'
-    }
-    return 'ok'
-  } catch (e: any) {
-    lastError = `Network error: ${e?.message ?? e}`
-    console.warn('push error', e)
-    return 'error'
-  }
-}
-
-// ---------- template + preference logic ----------
 function fillTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '')
 }
@@ -194,18 +50,59 @@ function defaultKeyForInboxType(inboxType: string, role: string): string {
   return 'user_inbox'
 }
 
+/** Extract the inbox row from either payload format. */
+function extractRow(body: any): {
+  recipient_id: string
+  title: string
+  body: string
+  action_url: string
+  metadata: any
+  notification_key: string
+  inbox_type: string
+} | null {
+  // Database Webhook format: { type: 'INSERT', record: {...} }
+  if (body?.record?.recipient_id) {
+    const r = body.record
+    return {
+      recipient_id: r.recipient_id,
+      title: r.title ?? '',
+      body: r.body ?? '',
+      action_url: r.action_url ?? '',
+      metadata: r.metadata ?? {},
+      notification_key: r.notification_key ?? '',
+      inbox_type: r.type ?? '',
+    }
+  }
+  // Direct call format
+  if (body?.recipient_id) {
+    return {
+      recipient_id: body.recipient_id,
+      title: body.title ?? '',
+      body: body.body ?? '',
+      action_url: body.action_url ?? '',
+      metadata: body.metadata ?? {},
+      notification_key: body.notification_key ?? '',
+      inbox_type: body.inbox_type ?? '',
+    }
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
+  if (req.method !== 'POST') return json({ error: 'Method Not Allowed' }, 405)
+
+  // Auth: service-role bearer (Database Webhook adds this automatically)
   const auth = req.headers.get('authorization') ?? ''
   if (!auth.startsWith('Bearer ') || auth.slice(7) !== SERVICE_ROLE) {
-    return new Response('Unauthorized', { status: 401 })
+    return json({ error: 'Unauthorized' }, 401)
   }
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    return new Response('VAPID not configured', { status: 500 })
+    return json({ error: 'VAPID not configured' }, 500)
   }
 
   const body = await req.json().catch(() => null)
-  if (!body || !body.recipient_id) return new Response('Bad request', { status: 400 })
+  const row = extractRow(body)
+  if (!row) return json({ error: 'Bad request — no recipient_id found' }, 400)
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } })
 
@@ -214,24 +111,24 @@ Deno.serve(async (req) => {
   const log = (status: string, detail: string, sentCount = 0, key = '') =>
     supabase
       .from('push_log')
-      .insert({ recipient_id: body.recipient_id, status, detail, sent_count: sentCount, key })
+      .insert({ recipient_id: row.recipient_id, status, detail, sent_count: sentCount, key })
       .then(() => {})
       .catch((e) => console.warn('push_log insert failed', e))
 
   try {
     // Resolve recipient role (for default key selection).
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', body.recipient_id).maybeSingle()
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', row.recipient_id).maybeSingle()
     const role = (profile as any)?.role ?? 'seller'
 
-    const explicitKey = (body.notification_key as string | undefined) ?? ''
-    const key = explicitKey || defaultKeyForInboxType(body.inbox_type as string, role)
+    const explicitKey = row.notification_key
+    const key = explicitKey || defaultKeyForInboxType(row.inbox_type, role)
 
-    // Template lookup (fall back to literal title/body passed by trigger).
+    // Template lookup (fall back to literal title/body).
     const { data: tplRow } = await supabase.from('notification_templates').select('*').eq('key', key).maybeSingle()
     const template = (tplRow as any) ?? {
       enabled: true,
-      title_template: body.title ?? 'Calista Concept',
-      body_template: body.body ?? '',
+      title_template: row.title || 'Calista Concept',
+      body_template: row.body || '',
       tone: 'normal',
     }
     if (!template.enabled) {
@@ -243,7 +140,7 @@ Deno.serve(async (req) => {
     const { data: pref } = await supabase
       .from('notification_preferences')
       .select('enabled')
-      .eq('user_id', body.recipient_id)
+      .eq('user_id', row.recipient_id)
       .eq('key', key)
       .maybeSingle()
     if (pref && pref.enabled === false) {
@@ -252,9 +149,9 @@ Deno.serve(async (req) => {
     }
 
     // Fill template placeholders.
-    const meta = body.metadata ?? {}
+    const meta = row.metadata ?? {}
     const vars: Record<string, string> = {
-      subject: body.title ?? '',
+      subject: row.title ?? '',
       actor: (meta.actor_name as string) ?? 'Someone',
       amount: (meta.amount as string) ?? '',
       period: (meta.period as string) ?? '',
@@ -263,53 +160,69 @@ Deno.serve(async (req) => {
     const title = fillTemplate(template.title_template, vars) || 'Calista Concept'
     const bodyText = fillTemplate(template.body_template, vars)
     const tag = TONE_TAG[template.tone] || ''
-    const payload = JSON.stringify({ title, body: bodyText, tag: tag || undefined, url: body.action_url || '/' })
+    const payload = JSON.stringify({ title, body: bodyText, tag: tag || undefined, url: row.action_url || '/' })
 
-    // Subscriptions for this user.
+    // Fetch all subscriptions for this user.
     const { data: subs } = await supabase
       .from('push_subscriptions')
-      .select('endpoint,p256dh,auth_key')
-      .eq('user_id', body.recipient_id)
+      .select('endpoint,p256dh,auth_key,subscription')
+      .eq('user_id', row.recipient_id)
     const list = (subs as any[]) ?? []
     if (list.length === 0) {
       await log('skipped', 'No devices subscribed — ask the user to enable notifications in their profile', 0, key)
       return json({ sent: 0, reason: 'no_subscriptions' })
     }
 
+    // Build the standard PushSubscription shape expected by web-push.
+    // Prefer the `subscription` jsonb column (full object), fall back to
+    // building from the legacy per-field columns for old rows.
+    const toWebPushSub = (s: any) => {
+      if (s.subscription && s.subscription.keys) return s.subscription
+      return {
+        endpoint: s.endpoint,
+        keys: { p256dh: s.p256dh, auth: s.auth_key },
+      }
+    }
+
     let sent = 0
     const gone: string[] = []
-    const vapidCache = new Map<string, string>()
+    const errors: string[] = []
+
     for (const s of list) {
-      // Cache VAPID JWT per push-service origin (FCM, APNs, Mozilla) so
-      // we don't re-sign for every endpoint of the same service.
-      const origin = new URL(s.endpoint).origin
-      let vapid = vapidCache.get(origin)
-      if (!vapid) {
-        vapid = await vapidJwt(s.endpoint)
-        vapidCache.set(origin, vapid)
+      const sub = toWebPushSub(s)
+      try {
+        await webPush.sendNotification(sub, payload, {
+          TTL: 86400,
+          // `urgency` and `topic` could be set here too; the library
+          // handles VAPID JWT generation per-endpoint internally.
+        })
+        sent++
+      } catch (e: any) {
+        const status = e?.statusCode ?? 0
+        // 404 / 410 = subscription expired; clean up.
+        if (status === 404 || status === 410) {
+          gone.push(s.endpoint)
+        } else {
+          errors.push(`HTTP ${status || 'unknown'}: ${e?.body || e?.message || 'unknown error'}`)
+        }
       }
-      const r = await sendPush(s, payload, vapid)
-      if (r === 'ok') sent++
-      if (r === 'gone') gone.push(s.endpoint)
     }
+
     if (gone.length) {
-      await supabase.from('push_subscriptions').delete().in('endpoint', gone).eq('user_id', body.recipient_id)
+      await supabase.from('push_subscriptions').delete().in('endpoint', gone).eq('user_id', row.recipient_id)
     }
+
     await log(
       sent > 0 ? 'sent' : 'error',
       sent > 0
         ? `Delivered to ${sent}/${list.length} device(s)${gone.length ? `, removed ${gone.length} expired` : ''}`
-        : `All device pushes failed: ${lastPushError() || 'unknown — check Edge Function logs'}`,
+        : `All device pushes failed: ${errors.join(' | ') || 'unknown'}`,
       sent,
       key,
     )
-    return json({ sent, gone: gone.length })
+    return json({ sent, gone: gone.length, errors })
   } catch (e) {
     await log('error', `Unexpected error: ${(e as Error)?.message ?? e}`)
-    return json({ sent: 0, reason: 'error' })
+    return json({ error: 'internal', detail: (e as Error)?.message }, 500)
   }
 })
-
-function json(obj: unknown) {
-  return new Response(JSON.stringify(obj), { headers: { 'Content-Type': 'application/json' } })
-}

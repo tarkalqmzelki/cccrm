@@ -997,9 +997,23 @@ async deleteFinanceEntry(id: string): Promise<void> {
   /* ================================================================== */
 
   /* ---------- push_subscriptions ---------- */
-  async addPushSubscription(userId: string, sub: { endpoint: string; p256dh: string; auth_key: string }): Promise<void> {
+  async addPushSubscription(
+    userId: string,
+    sub: {
+      endpoint: string
+      p256dh: string
+      auth_key: string
+      subscription?: { endpoint: string; keys: { p256dh: string; auth: string }; expirationTime: number | null }
+    },
+  ): Promise<void> {
     const { error } = await supabase!.from('push_subscriptions').upsert(
-      { user_id: userId, endpoint: sub.endpoint, p256dh: sub.p256dh, auth_key: sub.auth_key },
+      {
+        user_id: userId,
+        endpoint: sub.endpoint,
+        p256dh: sub.p256dh,
+        auth_key: sub.auth_key,
+        subscription: sub.subscription ?? null,
+      },
       { onConflict: 'user_id,endpoint' },
     )
     if (error) throw error

@@ -526,6 +526,10 @@ export interface PushSubscription {
   endpoint: string
   p256dh: string
   auth_key: string
+  /** Full PushSubscription.toJSON() object — preferred format used
+   *  by the `web-push` library.  Falls back to building from endpoint
+   *  + p256dh + auth_key when null (legacy rows). */
+  subscription: { endpoint: string; keys: { p256dh: string; auth: string }; expirationTime: number | null } | null
   created_at: string
 }
 
