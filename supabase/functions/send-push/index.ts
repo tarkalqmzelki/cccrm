@@ -187,70 +187,97 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } })
 
-  // Resolve recipient role (for default key selection).
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', body.recipient_id).maybeSingle()
-  const role = (profile as any)?.role ?? 'seller'
+  /** Log every outcome to push_log so admins can see why pushes did or
+   *  didn't arrive. Never let a logging failure break the response. */
+  const log = (status: string, detail: string, sentCount = 0, key = '') =>
+    supabase
+      .from('push_log')
+      .insert({ recipient_id: body.recipient_id, status, detail, sent_count: sentCount, key })
+      .then(() => {})
+      .catch((e) => console.warn('push_log insert failed', e))
 
-  const explicitKey = (body.notification_key as string | undefined) ?? ''
-  const key = explicitKey || defaultKeyForInboxType(body.inbox_type as string, role)
+  try {
+    // Resolve recipient role (for default key selection).
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', body.recipient_id).maybeSingle()
+    const role = (profile as any)?.role ?? 'seller'
 
-  // Template lookup (fall back to literal title/body passed by trigger).
-  const { data: tplRow } = await supabase.from('notification_templates').select('*').eq('key', key).maybeSingle()
-  const template = (tplRow as any) ?? {
-    enabled: true,
-    title_template: body.title ?? 'Calista Concept',
-    body_template: body.body ?? '',
-    tone: 'normal',
-  }
-  if (!template.enabled) {
-    return json({ sent: 0, reason: 'template_disabled' })
-  }
+    const explicitKey = (body.notification_key as string | undefined) ?? ''
+    const key = explicitKey || defaultKeyForInboxType(body.inbox_type as string, role)
 
-  // User preference (defaults to enabled if no row).
-  const { data: pref } = await supabase
-    .from('notification_preferences')
-    .select('enabled')
-    .eq('user_id', body.recipient_id)
-    .eq('key', key)
-    .maybeSingle()
-  if (pref && pref.enabled === false) {
-    return json({ sent: 0, reason: 'user_disabled' })
-  }
+    // Template lookup (fall back to literal title/body passed by trigger).
+    const { data: tplRow } = await supabase.from('notification_templates').select('*').eq('key', key).maybeSingle()
+    const template = (tplRow as any) ?? {
+      enabled: true,
+      title_template: body.title ?? 'Calista Concept',
+      body_template: body.body ?? '',
+      tone: 'normal',
+    }
+    if (!template.enabled) {
+      await log('skipped', `Template "${key}" is disabled globally`, 0, key)
+      return json({ sent: 0, reason: 'template_disabled' })
+    }
 
-  // Fill template placeholders.
-  const meta = body.metadata ?? {}
-  const vars: Record<string, string> = {
-    subject: body.title ?? '',
-    actor: (meta.actor_name as string) ?? 'Someone',
-    amount: (meta.amount as string) ?? '',
-    period: (meta.period as string) ?? '',
-    when: (meta.when as string) ?? '',
-  }
-  const title = fillTemplate(template.title_template, vars) || 'Calista Concept'
-  const bodyText = fillTemplate(template.body_template, vars)
-  const tag = TONE_TAG[template.tone] || ''
-  const payload = JSON.stringify({ title, body: bodyText, tag: tag || undefined, url: body.action_url || '/' })
+    // User preference (defaults to enabled if no row).
+    const { data: pref } = await supabase
+      .from('notification_preferences')
+      .select('enabled')
+      .eq('user_id', body.recipient_id)
+      .eq('key', key)
+      .maybeSingle()
+    if (pref && pref.enabled === false) {
+      await log('skipped', `Recipient disabled "${key}" in their preferences`, 0, key)
+      return json({ sent: 0, reason: 'user_disabled' })
+    }
 
-  // Subscriptions for this user.
-  const { data: subs } = await supabase
-    .from('push_subscriptions')
-    .select('endpoint,p256dh,auth_key')
-    .eq('user_id', body.recipient_id)
-  const list = (subs as any[]) ?? []
-  if (list.length === 0) return json({ sent: 0, reason: 'no_subscriptions' })
+    // Fill template placeholders.
+    const meta = body.metadata ?? {}
+    const vars: Record<string, string> = {
+      subject: body.title ?? '',
+      actor: (meta.actor_name as string) ?? 'Someone',
+      amount: (meta.amount as string) ?? '',
+      period: (meta.period as string) ?? '',
+      when: (meta.when as string) ?? '',
+    }
+    const title = fillTemplate(template.title_template, vars) || 'Calista Concept'
+    const bodyText = fillTemplate(template.body_template, vars)
+    const tag = TONE_TAG[template.tone] || ''
+    const payload = JSON.stringify({ title, body: bodyText, tag: tag || undefined, url: body.action_url || '/' })
 
-  const vapid = await vapidJwt()
-  let sent = 0
-  const gone: string[] = []
-  for (const s of list) {
-    const r = await sendPush(s, payload, vapid)
-    if (r === 'ok') sent++
-    if (r === 'gone') gone.push(s.endpoint)
+    // Subscriptions for this user.
+    const { data: subs } = await supabase
+      .from('push_subscriptions')
+      .select('endpoint,p256dh,auth_key')
+      .eq('user_id', body.recipient_id)
+    const list = (subs as any[]) ?? []
+    if (list.length === 0) {
+      await log('skipped', 'No devices subscribed — ask the user to enable notifications in their profile', 0, key)
+      return json({ sent: 0, reason: 'no_subscriptions' })
+    }
+
+    const vapid = await vapidJwt()
+    let sent = 0
+    const gone: string[] = []
+    for (const s of list) {
+      const r = await sendPush(s, payload, vapid)
+      if (r === 'ok') sent++
+      if (r === 'gone') gone.push(s.endpoint)
+    }
+    if (gone.length) {
+      await supabase.from('push_subscriptions').delete().in('endpoint', gone).eq('user_id', body.recipient_id)
+    }
+    await log(
+      sent > 0 ? 'sent' : 'error',
+      sent > 0
+        ? `Delivered to ${sent}/${list.length} device(s)${gone.length ? `, removed ${gone.length} expired` : ''}`
+        : 'All device pushes failed — check Edge Function logs (VAPID keys or endpoint errors)',
+      sent,
+      key,
+    )
+    return json({ sent, gone: gone.length })
+  } catch (e) {
+    await log('error', `Unexpected error: ${(e as Error)?.message ?? e}`)
+    return json({ sent: 0, reason: 'error' })
   }
-  if (gone.length) {
-    await supabase.from('push_subscriptions').delete().in('endpoint', gone).eq('user_id', body.recipient_id)
-  }
-  return json({ sent, gone: gone.length })
 })
 
 function json(obj: unknown) {

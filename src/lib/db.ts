@@ -7,7 +7,7 @@ import type {
   FinanceEntry, FinanceCategory, FinanceKind,
   ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
   MessagePriority, MessageFolder,
-  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription,
+  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -1046,6 +1046,30 @@ async deleteFinanceEntry(id: string): Promise<void> {
     tone: NotificationTone
   }>): Promise<void> {
     const { error } = await supabase!.from('notification_templates').update(patch).eq('key', key)
+    if (error) throw error
+  },
+
+  /* ---------- delivery log (admin) ---------- */
+  async listPushLog(limit = 25): Promise<PushLogEntry[]> {
+    const { data, error } = await supabase!.from('push_log')
+      .select('*').order('created_at', { ascending: false }).limit(limit)
+    if (error) throw error
+    return (data || []) as PushLogEntry[]
+  },
+
+  /* ---------- test notification (full pipeline: insert → trigger → edge → push) ---------- */
+  async sendTestPush(userId: string): Promise<void> {
+    const { error } = await supabase!.from('inbox_messages').insert({
+      id: uuid(),
+      recipient_id: userId,
+      sender_id: userId,
+      type: 'system',
+      title: 'Test notification',
+      body: 'If you can read this on your phone, push notifications are working.',
+      read: false,
+      action_url: '/inbox',
+      metadata: { kind: 'test_push' },
+    })
     if (error) throw error
   },
 }

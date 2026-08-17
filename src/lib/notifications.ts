@@ -9,11 +9,31 @@ import type { NotificationKey } from './types'
  */
 export const VAPID_PUBLIC_KEY = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ?? ''
 
+/** The browser is technically capable of Web Push (SW + PushManager). */
 export const isPushSupported = (): boolean =>
   typeof window !== 'undefined' &&
   'serviceWorker' in navigator &&
-  'PushManager' in window &&
-  !!VAPID_PUBLIC_KEY
+  'PushManager' in window
+
+/** The deployment has a VAPID public key bundled. If false, the push UI
+ *  must explain the missing configuration instead of hiding itself. */
+export const isPushConfigured = (): boolean => !!VAPID_PUBLIC_KEY
+
+/** iOS / iPadOS detection (Safari UIWebView-era property still works). */
+export function isIOS(): boolean {
+  if (typeof window === 'undefined') return false
+  const ua = window.navigator.userAgent
+  return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && 'ontouchend' in document)
+}
+
+/** True when running as an installed Home Screen PWA. iOS only allows
+ *  the notification prompt + push delivery inside installed PWAs — a
+ *  regular Safari tab will never show it. */
+export function isStandalone(): boolean {
+  if (typeof window === 'undefined') return false
+  const nav = window.navigator as Navigator & { standalone?: boolean }
+  return window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true
+}
 
 /**
  * Convert a base64url VAPID key into the Uint8Array expected by
@@ -35,7 +55,7 @@ function b64uToUint8Array(s: string): Uint8Array {
  * Returns true if a subscription was created or already existed.
  */
 export async function subscribePush(userId: string): Promise<boolean> {
-  if (!isPushSupported() || !supabase) return false
+  if (!isPushSupported() || !VAPID_PUBLIC_KEY || !supabase) return false
 
   const reg = await navigator.serviceWorker.ready
   let sub = await reg.pushManager.getSubscription()

@@ -13,6 +13,7 @@ import type { Settings, SystemStatus, SystemStatusValue } from '../../lib/types'
 import { dateShort } from '../../lib/format'
 import { NotificationTemplateEditor } from '../../components/NotificationTemplateEditor'
 import { NotificationPreferences } from '../../components/NotificationPreferences'
+import { PushDeliveryLog } from '../../components/PushDeliveryLog'
 
 export default function SettingsPage() {
   const { push } = useToast()
@@ -154,6 +155,14 @@ export default function SettingsPage() {
             desc="Edit the title and body format applied to every push notification. Disabling a type here suppresses it for everyone."
           />
           <NotificationTemplateEditor />
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader
+            title="Push delivery log"
+            desc="Most recent push attempts, written by the Edge Function. Empty after a test means the trigger can't reach the function."
+          />
+          <PushDeliveryLog />
         </Card>
       </div>
     </PageContainer>

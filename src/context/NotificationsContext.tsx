@@ -5,6 +5,7 @@ import { useAuth } from './AuthContext'
 import { useToast } from './ToastContext'
 import {
   isPushSupported,
+  isPushConfigured,
   isPushSubscribed,
   requestNotificationPermission,
   subscribePush,
@@ -15,6 +16,8 @@ import type { NotificationKey, NotificationPreference } from '../lib/types'
 interface NotificationsState {
   /** Push is supported on this browser/device. */
   supported: boolean
+  /** The deployment bundles a VAPID public key (server half configured). */
+  configured: boolean
   /** The user has granted OS notification permission. */
   permission: NotificationPermission
   /** This device has an active push subscription saved to the DB. */
@@ -41,6 +44,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState<NotificationPreference[] | null>(null)
 
   const supported = isPushSupported()
+  const configured = isPushConfigured()
 
   /* ---- Load preferences + subscription state on login ---- */
   useEffect(() => {
@@ -111,7 +115,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   )
 
   const enablePush = useCallback(async () => {
-    if (!user || !supported) return
+    if (!user || !supported || !configured) return
     const perm = await requestNotificationPermission()
     setPermission(perm)
     if (perm !== 'granted') {
@@ -125,7 +129,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       push({ tone: 'error', title: 'Could not enable notifications', desc: e?.message })
     }
-  }, [user?.id, supported, push])
+  }, [user?.id, supported, configured, push])
 
   const disablePush = useCallback(async () => {
     if (!supported) return
@@ -139,9 +143,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [supported, push])
 
   const value = useMemo(
-    () => ({ supported, permission, subscribed, preferences, togglePreference, enablePush, disablePush }),
+    () => ({ supported, configured, permission, subscribed, preferences, togglePreference, enablePush, disablePush }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [supported, permission, subscribed, preferences, user?.id],
+    [supported, configured, permission, subscribed, preferences, user?.id],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

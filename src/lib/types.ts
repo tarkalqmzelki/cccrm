@@ -528,3 +528,14 @@ export interface PushSubscription {
   auth_key: string
   created_at: string
 }
+
+/** One row per send-push Edge Function invocation (see schema30.sql). */
+export interface PushLogEntry {
+  id: string
+  created_at: string
+  recipient_id: string | null
+  key: string
+  status: 'sent' | 'skipped' | 'error' | 'unauthorized' | string
+  detail: string
+  sent_count: number
+}
