@@ -116,18 +116,23 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const enablePush = useCallback(async () => {
     if (!user || !supported || !configured) return
-    const perm = await requestNotificationPermission()
-    setPermission(perm)
-    if (perm !== 'granted') {
-      push({ tone: 'error', title: 'Notifications blocked', desc: 'Enable them in your browser/site settings to receive alerts.' })
-      return
-    }
     try {
+      // Step 1: OS permission (iOS shows the iOS prompt here, in the PWA).
+      const perm = await requestNotificationPermission()
+      setPermission(perm)
+      if (perm !== 'granted') {
+        push({ tone: 'error', title: 'Notifications blocked', desc: 'Enable them in your browser/site settings to receive alerts.' })
+        return
+      }
+      // Step 2: subscribe to the push service + persist to DB.
       const ok = await subscribePush(user.id)
       setSubscribed(ok)
       if (ok) push({ tone: 'success', title: 'Notifications enabled', desc: 'You’ll receive alerts on this device.' })
     } catch (e: any) {
-      push({ tone: 'error', title: 'Could not enable notifications', desc: e?.message })
+      // Surface the detailed, actionable message from subscribePush.
+      const detail = e?.message || 'Could not enable notifications.'
+      push({ tone: 'error', title: 'Could not enable notifications', desc: detail })
+      console.error('[push] enablePush failed:', e)
     }
   }, [user?.id, supported, configured, push])
 
