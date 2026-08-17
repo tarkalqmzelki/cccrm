@@ -162,7 +162,7 @@ export interface PeriodStats {
 
 const DAY = 86400000
 
-export function periodStats(deals: Deal[], leads: Lead[], profiles: Profile[], days = 30): PeriodStats {
+export function periodStats(deals: Deal[], leads: Array<{ created_at: string }>, profiles: Profile[], days = 30): PeriodStats {
   const cutoff = Date.now() - days * DAY
   const prevCutoff = cutoff - days * DAY
   const inPeriod = (iso: string, from: number, to: number) => {

@@ -6,9 +6,10 @@ import { db } from '../lib/db'
 import { useAuth } from '../context/AuthContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { Input, Select } from '../components/ui/Input'
+import { Input } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
 import { Avatar } from '../components/ui/Avatar'
+import { FilterDropdown } from '../components/ui/FilterDropdown'
 import { Table, useSort, type Column } from '../components/ui/Table'
 import { PageContainer } from '../components/layout/AppShell'
 import { CreateOppModal } from '../components/CreateOppModal'
@@ -259,21 +260,34 @@ export default function Leads() {
           </div>
 
           {/* Time filter */}
-          <Select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value as TimeFilter)} className="h-10 w-36">
-            {TIME_FILTERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </Select>
+          <FilterDropdown
+            value={timeFilter}
+            onChange={(v) => setTimeFilter(v as TimeFilter)}
+            options={TIME_FILTERS.map((t) => ({ value: t.value, label: t.label }))}
+            className="w-36"
+          />
 
           {/* Status filter */}
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | LeadStatus)} className="h-10 w-36">
-            <option value="all">All statuses</option>
-            {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_META[s].label}</option>)}
-          </Select>
+          <FilterDropdown
+            value={statusFilter}
+            onChange={(v) => setStatusFilter(v as 'all' | LeadStatus)}
+            options={[
+              { value: 'all', label: 'All statuses' },
+              ...LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_META[s].label })),
+            ]}
+            className="w-36"
+          />
 
           {/* Owner filter */}
-          <Select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="h-10 w-40">
-            <option value="all">All owners</option>
-            {ownerOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </Select>
+          <FilterDropdown
+            value={ownerFilter}
+            onChange={(v) => setOwnerFilter(v)}
+            options={[
+              { value: 'all', label: 'All owners' },
+              ...ownerOptions.map((o) => ({ value: o.value, label: o.label })),
+            ]}
+            className="w-40"
+          />
 
           {hasActiveFilters && (
             <button onClick={clearFilters} className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-2xs font-medium text-ink-500 hover:bg-ink-50">

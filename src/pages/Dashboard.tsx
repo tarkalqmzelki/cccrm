@@ -13,7 +13,7 @@ import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { PageContainer } from '../components/layout/AppShell'
 import { STATUS_META, DEFAULT_SETTINGS } from '../lib/types'
-import type { Deal, Profile, Lead, Payout, Referral, Settings } from '../lib/types'
+import type { Deal, Profile, Company, Payout, Referral, Settings } from '../lib/types'
 import { leaderboard, periodStats, revenueSeries, grossVolume, effectiveLevel, referralEarnings } from '../lib/metrics'
 import { eur, delta } from '../lib/format'
 
@@ -21,12 +21,12 @@ export default function Dashboard() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const { data, loading } = useAsync(async () => {
-    const [profiles, deals, leads, payouts, referrals] = await Promise.all([
-      db.listProfiles(), db.listDeals(), db.listLeads(), db.listPayouts(), db.listReferrals(),
+    const [profiles, deals, companies, payouts, referrals] = await Promise.all([
+      db.listProfiles(), db.listDeals(), db.listCompanies(), db.listPayouts(), db.listReferrals(),
     ])
     const settings = await db.getSettings()
-    return { profiles, deals, leads, payouts, referrals, settings: settings || DEFAULT_SETTINGS } as {
-      profiles: Profile[]; deals: Deal[]; leads: Lead[]; payouts: Payout[]; referrals: Referral[]; settings: Settings
+    return { profiles, deals, companies, payouts, referrals, settings: settings || DEFAULT_SETTINGS } as {
+      profiles: Profile[]; deals: Deal[]; companies: Company[]; payouts: Payout[]; referrals: Referral[]; settings: Settings
     }
   }, [user?.id])
 
@@ -41,7 +41,7 @@ export default function Dashboard() {
 
 /* ---------------- Admin homepage ---------------- */
 function AdminHome({ data, loading }: { data: any; loading: boolean }) {
-  const stats = useMemo(() => (data ? periodStats(data.deals, data.leads, data.profiles) : null), [data])
+  const stats = useMemo(() => (data ? periodStats(data.deals, data.companies, data.profiles) : null), [data])
   const board = useMemo(() => (data ? leaderboard(data.deals, data.profiles, data.payouts, data.referrals, data.settings) : []), [data])
   const series = useMemo(() => (data ? revenueSeries(data.deals, 14) : []), [data])
   const gross = useMemo(() => (data ? grossVolume(data.deals) : 0), [data])

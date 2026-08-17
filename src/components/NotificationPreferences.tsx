@@ -26,7 +26,10 @@ export function NotificationPreferences() {
   if (!user) return null
 
   const role: 'admin' | 'user' = user.role === 'admin' ? 'admin' : 'user'
-  const keys = NOTIFICATION_KEYS.filter((k) => k.role === role)
+  // Show keys matching the user's role, plus `user_lead_reminder` for
+  // everyone (admins set reminders for themselves too — it's a personal
+  // notification, not an admin-only or user-only one).
+  const keys = NOTIFICATION_KEYS.filter((k) => k.role === role || k.key === 'user_lead_reminder')
   const enabledSet = new Set<NotificationKey>(
     (preferences ?? [])
       .filter((p) => p.enabled)

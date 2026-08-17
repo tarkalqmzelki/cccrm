@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Bell, Clock } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
-import { Field, Input } from './ui/Input'
+import { Field, Textarea } from './ui/Input'
+import { DateTimePicker } from './ui/DateTimePicker'
 import { useToast } from '../context/ToastContext'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/db'
@@ -19,16 +20,26 @@ const PRESETS = [1, 2, 3, 4] as const
 
 /**
  * Modal shown when the user clicks "Remind Me" on a lead.  Lets them
- * pick a reminder time (1/2/3/4 days from now, or a custom datetime),
+ * pick a reminder time (1/2/3/4 days from now, or a custom datetime
+ * using the same DateTimePicker component as the meeting calendar),
  * then writes a row to `lead_reminders` — a cron job fires the actual
  * push notification at the scheduled time.
+ *
+ * The "Reason" field flows into the push notification body so the
+ * user sees WHY they set the reminder when it fires.
  */
 export function LeadReminderModal({ open, onClose, company }: Props) {
   const { user } = useAuth()
   const { push } = useToast()
   const [preset, setPreset] = useState<number | null>(1)
-  const [customDate, setCustomDate] = useState('')
-  const [customTime, setCustomTime] = useState('10:00')
+  // Custom datetime — stored as a local "YYYY-MM-DDTHH:mm" string
+  // (DateTimePicker with outputIso=false).  Initial value: tomorrow 10:00.
+  const [customDateTime, setCustomDateTime] = useState<string>(() => {
+    const d = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    d.setHours(10, 0, 0, 0)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T10:00`
+  })
+  const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
 
   function computeRemindAt(): string | null {
@@ -38,11 +49,11 @@ export function LeadReminderModal({ open, onClose, company }: Props) {
       d.setHours(10, 0, 0, 0)
       return d.toISOString()
     }
-    if (customDate && customTime) {
-      // customDate is YYYY-MM-DD, customTime is HH:MM (local)
-      const dt = new Date(`${customDate}T${customTime}`)
-      if (isNaN(dt.getTime())) return null
-      return dt.toISOString()
+    // Custom mode — customDateTime is a local "YYYY-MM-DDTHH:mm" string
+    if (customDateTime) {
+      const d = new Date(customDateTime)
+      if (isNaN(d.getTime())) return null
+      return d.toISOString()
     }
     return null
   }
@@ -60,12 +71,16 @@ export function LeadReminderModal({ open, onClose, company }: Props) {
     }
     setSaving(true)
     try {
+      // Build the notification body — include the reason if provided.
+      const baseBody = `Reminder — Meeting reminder for ${company.name}`
+      const body = reason.trim() ? `${baseBody}\nReason: ${reason.trim()}` : baseBody
+
       await db.createLeadReminder({
         user_id: user.id,
         company_id: company.id,
         remind_at: remindAt,
         title: 'Lead reminder',
-        body: `Reminder — Meeting reminder for ${company.name}`,
+        body,
       })
       push({
         tone: 'success',
@@ -74,8 +89,7 @@ export function LeadReminderModal({ open, onClose, company }: Props) {
       })
       onClose()
       setPreset(1)
-      setCustomDate('')
-      setCustomTime('10:00')
+      setReason('')
     } catch (e: any) {
       push({ tone: 'error', title: 'Could not schedule reminder', desc: e?.message })
     } finally {
@@ -121,7 +135,7 @@ export function LeadReminderModal({ open, onClose, company }: Props) {
               type="button"
               onClick={() => setPreset(null)}
               className={`flex-1 rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${
-                preset === null && (customDate || customTime)
+                preset === null
                   ? 'border-transparent bg-ink text-white'
                   : 'border-line text-ink-600 hover:bg-ink-50'
               }`}
@@ -131,27 +145,26 @@ export function LeadReminderModal({ open, onClose, company }: Props) {
           </div>
         </Field>
 
-        {/* Custom date/time */}
+        {/* Custom date/time — uses the same DateTimePicker as meetings */}
         {preset === null && (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Date">
-              <Input
-                type="date"
-                value={customDate}
-                onChange={(e) => setCustomDate(e.target.value)}
-                className="h-10"
-              />
-            </Field>
-            <Field label="Time">
-              <Input
-                type="time"
-                value={customTime}
-                onChange={(e) => setCustomTime(e.target.value)}
-                className="h-10"
-              />
-            </Field>
-          </div>
+          <Field label="Date & time">
+            <DateTimePicker
+              value={customDateTime}
+              onChange={setCustomDateTime}
+              outputIso={false}
+            />
+          </Field>
         )}
+
+        {/* Reason — flows into the push notification body */}
+        <Field label="Reason" hint="Why are you setting this reminder? Shown in the notification.">
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="e.g. Follow up after the discovery call"
+          />
+        </Field>
 
         {/* Preview of when the reminder fires */}
         {computeRemindAt() && (
@@ -160,6 +173,8 @@ export function LeadReminderModal({ open, onClose, company }: Props) {
             <span>
               Reminder will fire on{' '}
               <strong>{new Date(computeRemindAt()!).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</strong>.
+              {reason.trim() && <> · Reason: <em>{reason.trim()}</em></>}
+              <br />
               Make sure push notifications are enabled on your phone to receive it.
             </span>
           </div>

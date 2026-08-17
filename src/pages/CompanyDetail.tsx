@@ -168,7 +168,7 @@ export default function CompanyDetail() {
           <div className="flex items-center gap-2">
             <Button variant="secondary" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
             <Button variant="secondary" icon={<Bell size={15} strokeWidth={1.75} />} onClick={() => setReminderOpen(true)}>Remind Me</Button>
-            {canAddOffer && <Button icon={<Plus size={15} strokeWidth={1.75} />} onClick={() => setCreateOppOpen(true)}>New Offer</Button>}
+            {canAddOffer && <Button variant="secondary" icon={<Plus size={15} strokeWidth={1.75} />} onClick={() => setCreateOppOpen(true)}>New Offer</Button>}
           </div>
         )}
         {!canEditCompany && user && (

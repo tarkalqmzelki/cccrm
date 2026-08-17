@@ -30,15 +30,17 @@ const backdropClass = {
 }
 
 export function Modal({ open, onClose, title, desc, children, footer, size = 'md', backdrop = 'normal', className = '' }: Props) {
+  // Escape key only — no body overflow manipulation.  The modal is
+  // `fixed inset-0` so it covers the screen regardless; the previous
+  // body overflow lock was causing a "frozen page" bug when the modal
+  // closed after save (the effect's cleanup didn't reliably reset
+  // overflow because `onClose` is a new function ref each render,
+  // causing the effect to re-run and leave overflow='hidden' stuck).
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     document.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
-    }
+    return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
   return createPortal(

@@ -190,7 +190,7 @@ function b64uEncode(buf: ArrayBuffer | Uint8Array): string {
  */
 export function defaultPreferencesFor(role: 'admin' | 'seller' | 'headhunter'): NotificationKey[] {
   if (role === 'admin') {
-    return ['admin_deal_new', 'admin_deal_review', 'admin_lead_new', 'admin_inbox', 'admin_meeting', 'admin_payout_reminder']
+    return ['admin_deal_new', 'admin_deal_review', 'admin_lead_new', 'admin_inbox', 'admin_meeting', 'admin_payout_reminder', 'user_lead_reminder']
   }
-  return ['user_inbox', 'user_deal_approved', 'user_lead_status', 'user_payout']
+  return ['user_inbox', 'user_deal_approved', 'user_lead_status', 'user_payout', 'user_lead_reminder']
 }
