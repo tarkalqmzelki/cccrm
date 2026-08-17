@@ -461,3 +461,70 @@ export const STATUS_META: Record<DealStatus, { label: string; tone: 'pos' | 'neg
   rejected: { label: 'Rejected', tone: 'neg' },
   closed: { label: 'Closed', tone: 'pos' },
 }
+
+// =====================================================================
+// Web Push notifications
+// =====================================================================
+
+/**
+ * Canonical notification keys.  Admins see the `admin_*` set in their
+ * Settings tab; users see the `user_*` set in their Profile modal.
+ * The Edge Function resolves an `inbox_messages` row to one of these
+ * keys (via `notification_key` column or by mapping `inbox_type` + role).
+ */
+export type NotificationKey =
+  | 'admin_deal_new'
+  | 'admin_deal_review'
+  | 'admin_lead_new'
+  | 'admin_inbox'
+  | 'admin_meeting'
+  | 'admin_payout_reminder'
+  | 'user_inbox'
+  | 'user_deal_approved'
+  | 'user_lead_status'
+  | 'user_payout'
+
+export interface NotificationKeyMeta {
+  key: NotificationKey
+  label: string
+  desc: string
+  role: 'admin' | 'user'
+}
+
+export const NOTIFICATION_KEYS: NotificationKeyMeta[] = [
+  { key: 'admin_deal_new',        label: 'New deal submitted',     desc: 'When a seller submits a new deal.',          role: 'admin' },
+  { key: 'admin_deal_review',     label: 'Deal needs review',      desc: 'When a deal is pending your approval.',      role: 'admin' },
+  { key: 'admin_lead_new',        label: 'New lead added',         desc: 'When a new lead is created.',                role: 'admin' },
+  { key: 'admin_inbox',           label: 'Inbox messages',         desc: 'Direct messages and system notifications.',  role: 'admin' },
+  { key: 'admin_meeting',         label: 'Calendar activities',    desc: 'When an activity is assigned to you.',       role: 'admin' },
+  { key: 'admin_payout_reminder', label: 'Pending payout reminder',desc: 'Daily reminder of stale pending payouts.',   role: 'admin' },
+  { key: 'user_inbox',            label: 'Inbox messages',         desc: 'Direct messages from admins or members.',    role: 'user'  },
+  { key: 'user_deal_approved',    label: 'Deal approved',          desc: 'When one of your deals is approved.',        role: 'user'  },
+  { key: 'user_lead_status',      label: 'Lead status changes',    desc: 'When the status of your lead is updated.',   role: 'user'  },
+  { key: 'user_payout',           label: 'Payout received',        desc: 'When one of your payouts is marked paid.',   role: 'user'  },
+]
+
+export type NotificationTone = 'low' | 'normal' | 'high' | 'urgent'
+
+export interface NotificationPreference {
+  user_id: string
+  key: NotificationKey
+  enabled: boolean
+}
+
+export interface NotificationTemplate {
+  key: NotificationKey
+  enabled: boolean
+  title_template: string
+  body_template: string
+  tone: NotificationTone
+}
+
+export interface PushSubscription {
+  id: string
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth_key: string
+  created_at: string
+}

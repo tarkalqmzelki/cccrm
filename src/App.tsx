@@ -1,7 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import type { ReactNode } from 'react'
-import { AuthProvider, useAuth } from './context/AuthContext'
-import { ToastProvider } from './context/ToastContext'
+import { useAuth } from './context/AuthContext'
 import { AppShell } from './components/layout/AppShell'
 import { ContextMenuHost } from './components/ui/ContextMenu'
 import Login from './pages/Login'
@@ -72,23 +71,19 @@ function Shell() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/*"
-              element={
-                <Protected>
-                  <Shell />
-                </Protected>
-              }
-            />
-          </Routes>
-          <ContextMenuHost />
-        </BrowserRouter>
-      </ToastProvider>
-    </AuthProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/*"
+          element={
+            <Protected>
+              <Shell />
+            </Protected>
+          }
+        />
+      </Routes>
+      <ContextMenuHost />
+    </BrowserRouter>
   )
 }

@@ -3,9 +3,11 @@ import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input, Field, Textarea } from './ui/Input'
 import { Avatar } from './ui/Avatar'
+import { Bell } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { db } from '../lib/db'
+import { NotificationPreferences } from './NotificationPreferences'
 
 export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, refresh } = useAuth()
@@ -50,7 +52,7 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
       open={open}
       onClose={onClose}
       title="Profile settings"
-      desc="Update your personal information."
+      desc="Update your personal information and notification preferences."
       size="md"
       footer={
         <>
@@ -59,7 +61,7 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
         </>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div className="flex items-center gap-4">
           <Avatar name={full_name || '?'} color={user.avatar_color} url={avatar_url} size={56} />
           <Field label="Photo URL" hint="Paste an image URL">
@@ -78,6 +80,14 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
         <Field label="Address">
           <Textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Via Roma 12, Milano" rows={2} />
         </Field>
+
+        <div className="border-t border-line pt-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Bell size={15} strokeWidth={1.75} className="text-ink-600" />
+            <h3 className="text-sm font-semibold">Notifications</h3>
+          </div>
+          <NotificationPreferences />
+        </div>
       </div>
     </Modal>
   )

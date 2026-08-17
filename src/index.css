@@ -44,6 +44,16 @@ body {
     background: #0a0a0a;
     color: #fff;
   }
+
+  /* iOS Safari auto-zooms into any field with font-size < 16px, which
+   * breaks the app-like feel on phones. Force 16px on touch devices. */
+  @media (pointer: coarse), (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
 }
 
 @layer components {

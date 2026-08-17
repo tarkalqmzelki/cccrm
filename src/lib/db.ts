@@ -7,6 +7,7 @@ import type {
   FinanceEntry, FinanceCategory, FinanceKind,
   ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
   MessagePriority, MessageFolder,
+  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -988,6 +989,63 @@ async deleteFinanceEntry(id: string): Promise<void> {
 
   async deleteActivityComment(id: string): Promise<void> {
     const { error } = await supabase!.from('scheduled_activity_comments').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ================================================================== */
+  /* WEB PUSH NOTIFICATIONS                                             */
+  /* ================================================================== */
+
+  /* ---------- push_subscriptions ---------- */
+  async addPushSubscription(userId: string, sub: { endpoint: string; p256dh: string; auth_key: string }): Promise<void> {
+    const { error } = await supabase!.from('push_subscriptions').upsert(
+      { user_id: userId, endpoint: sub.endpoint, p256dh: sub.p256dh, auth_key: sub.auth_key },
+      { onConflict: 'user_id,endpoint' },
+    )
+    if (error) throw error
+  },
+
+  async removePushSubscription(endpoint: string): Promise<void> {
+    const { error } = await supabase!.from('push_subscriptions').delete().eq('endpoint', endpoint)
+    if (error) throw error
+  },
+
+  async listPushSubscriptions(userId: string): Promise<PushSubscription[]> {
+    const { data, error } = await supabase!.from('push_subscriptions')
+      .select('*').eq('user_id', userId).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data || []) as PushSubscription[]
+  },
+
+  /* ---------- notification_preferences ---------- */
+  async listNotificationPreferences(userId: string): Promise<NotificationPreference[]> {
+    const { data, error } = await supabase!.from('notification_preferences')
+      .select('*').eq('user_id', userId)
+    if (error) throw error
+    return (data || []) as NotificationPreference[]
+  },
+
+  async setNotificationPreference(userId: string, key: NotificationKey, enabled: boolean): Promise<void> {
+    const { error } = await supabase!.from('notification_preferences')
+      .upsert({ user_id: userId, key, enabled }, { onConflict: 'user_id,key' })
+    if (error) throw error
+  },
+
+  /* ---------- notification_templates (admin) ---------- */
+  async listNotificationTemplates(): Promise<NotificationTemplate[]> {
+    const { data, error } = await supabase!.from('notification_templates')
+      .select('*').order('key', { ascending: true })
+    if (error) throw error
+    return (data || []) as NotificationTemplate[]
+  },
+
+  async updateNotificationTemplate(key: NotificationKey, patch: Partial<{
+    enabled: boolean
+    title_template: string
+    body_template: string
+    tone: NotificationTone
+  }>): Promise<void> {
+    const { error } = await supabase!.from('notification_templates').update(patch).eq('key', key)
     if (error) throw error
   },
 }

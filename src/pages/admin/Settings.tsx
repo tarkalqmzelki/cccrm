@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2 } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { Card, CardHeader } from '../../components/ui/Card'
@@ -11,6 +11,8 @@ import { useToast } from '../../context/ToastContext'
 import { DEFAULT_SETTINGS, SYSTEM_STATUS_META } from '../../lib/types'
 import type { Settings, SystemStatus, SystemStatusValue } from '../../lib/types'
 import { dateShort } from '../../lib/format'
+import { NotificationTemplateEditor } from '../../components/NotificationTemplateEditor'
+import { NotificationPreferences } from '../../components/NotificationPreferences'
 
 export default function SettingsPage() {
   const { push } = useToast()
@@ -125,6 +127,35 @@ export default function SettingsPage() {
       </div>
 
       <SystemStatusAdmin />
+
+      {/* ============= Notifications ============= */}
+      <div className="mt-8 mb-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+          <Bell size={18} strokeWidth={1.75} className="text-ink-600" />
+          Notifications
+        </h2>
+        <p className="mt-1 text-sm text-ink-400">
+          Control which alerts admins receive, the format and tone of each notification, and your own preferences.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader
+            title="Your notification preferences"
+            desc="Enable or disable each alert type for your own account."
+          />
+          <NotificationPreferences />
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Notification templates"
+            desc="Edit the title and body format applied to every push notification. Disabling a type here suppresses it for everyone."
+          />
+          <NotificationTemplateEditor />
+        </Card>
+      </div>
     </PageContainer>
   )
 }
