@@ -10,6 +10,7 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { ProfileModal } from '../ProfileModal'
 import { SystemStatusModal } from '../SystemStatusModal'
+import { ChangeLogPill, ChangeLogModal } from '../ChangeLogModal'
 import { useSidebarBadges } from '../../lib/hooks/useSidebarBadges'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
@@ -23,6 +24,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
+  const [changelogOpen, setChangelogOpen] = useState(false)
   const badges = useSidebarBadges(user)
   if (!user) return null
 
@@ -58,6 +60,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
             </NavLink>
           ))}
         </nav>
+        <ChangeLogPill onClick={() => setChangelogOpen(true)} />
         <SystemStatusPill onClick={() => setStatusOpen(true)} />
         <UserCard
           onProfile={() => setProfileOpen(true)}
@@ -97,6 +100,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
                   </NavLink>
                 ))}
               </nav>
+              <ChangeLogPill onClick={() => { setMobileOpen(false); setChangelogOpen(true) }} />
               <SystemStatusPill onClick={() => { setMobileOpen(false); setStatusOpen(true) }} />
               <UserCard
                 onProfile={() => { setMobileOpen(false); setProfileOpen(true) }}
@@ -126,6 +130,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
 
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
       <SystemStatusModal open={statusOpen} onClose={() => setStatusOpen(false)} />
+      <ChangeLogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
     </>
   )
 }

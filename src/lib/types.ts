@@ -539,3 +539,41 @@ export interface PushLogEntry {
   detail: string
   sent_count: number
 }
+
+/** Generic platform error log (see schema38.sql).  Any code path can
+ *  write to it via the service role; the LogBook view shows all rows. */
+export interface ErrorLogEntry {
+  id: string
+  created_at: string
+  source: string
+  severity: 'info' | 'warn' | 'error' | string
+  message: string
+  detail: string
+  actor_id: string | null
+  metadata: Record<string, unknown>
+}
+
+/** Release-note entries visible to all users in the sidebar; managed
+ *  by admins in Settings → ChangeLog. */
+export type ChangelogLabel = 'NEW' | 'IMPROVEMENT' | 'FIX' | 'TODO' | 'ANNOUNCEMENT'
+
+export const CHANGELOG_LABEL_META: Record<ChangelogLabel, { label: string; tone: 'pos' | 'info' | 'warn' | 'neutral' | 'neg'; color: string }> = {
+  NEW:          { label: 'New',          tone: 'pos',    color: '#16A34A' },
+  IMPROVEMENT:  { label: 'Improvement',  tone: 'info',   color: '#2563EB' },
+  FIX:          { label: 'Fix',          tone: 'warn',   color: '#D97706' },
+  TODO:         { label: 'To be done',   tone: 'neutral', color: '#737373' },
+  ANNOUNCEMENT: { label: 'Announcement', tone: 'neg',    color: '#9333EA' },
+}
+
+export const CHANGELOG_LABELS: ChangelogLabel[] = ['NEW', 'IMPROVEMENT', 'FIX', 'TODO', 'ANNOUNCEMENT']
+
+export interface ChangelogEntry {
+  id: string
+  created_at: string
+  label: ChangelogLabel
+  version: string
+  title: string
+  body: string
+  published: boolean
+  created_by: string | null
+}

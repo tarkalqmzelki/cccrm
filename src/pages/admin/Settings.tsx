@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { Card, CardHeader } from '../../components/ui/Card'
@@ -14,12 +14,54 @@ import { dateShort } from '../../lib/format'
 import { NotificationTemplateEditor } from '../../components/NotificationTemplateEditor'
 import { NotificationPreferences } from '../../components/NotificationPreferences'
 import { PushDeliveryLog } from '../../components/PushDeliveryLog'
+import { LogBook } from '../../components/LogBook'
+import { ChangeLogManager } from '../../components/ChangeLogManager'
+
+type Category =
+  | 'commissions'
+  | 'notif-preferences'
+  | 'notif-templates'
+  | 'notif-log'
+  | 'notif-errors'
+  | 'system'
+  | 'logbook'
+  | 'changelog'
+
+interface NavItem {
+  id: Category
+  label: string
+  icon: typeof Bell
+  group: string
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { id: 'commissions',       label: 'Commissions',       icon: Settings2,  group: 'Commissions' },
+  { id: 'notif-preferences',  label: 'Your preferences',  icon: Bell,       group: 'Notifications' },
+  { id: 'notif-templates',    label: 'Templates',         icon: Bell,       group: 'Notifications' },
+  { id: 'notif-log',          label: 'Delivery log',      icon: Bell,       group: 'Notifications' },
+  { id: 'notif-errors',       label: 'Errors',            icon: Bell,       group: 'Notifications' },
+  { id: 'system',             label: 'System status',     icon: Activity,   group: 'System' },
+  { id: 'logbook',            label: 'LogBook',           icon: BookOpen,   group: 'System' },
+  { id: 'changelog',          label: 'ChangeLog',         icon: Sparkles,   group: 'System' },
+]
+
+const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
+  commissions:       { title: 'Commissions',                      desc: 'Configure level thresholds, commission rates, and referral bonuses.' },
+  'notif-preferences': { title: 'Your notification preferences',  desc: 'Enable or disable each alert type for your own account.' },
+  'notif-templates':   { title: 'Notification templates',         desc: 'Edit the title and body format applied to every push notification. Disabling a type here suppresses it for everyone.' },
+  'notif-log':         { title: 'Push delivery log',              desc: 'Successful push deliveries, written by the Edge Function.' },
+  'notif-errors':      { title: 'Notification errors',            desc: 'Failed and skipped pushes. Empty after a test means the trigger can\'t reach the function — check app_secrets.' },
+  system:             { title: 'System status',                  desc: 'Toggle each tracked service\'s status. Members see updates in real time (within ~30s).' },
+  logbook:            { title: 'LogBook',                        desc: 'Every error and warning logged across the platform — push failures, sync issues, anything we surface.' },
+  changelog:          { title: 'ChangeLog',                       desc: 'Release notes shown to all users in the sidebar. Drafts are hidden until published.' },
+}
 
 export default function SettingsPage() {
   const { push } = useToast()
   const { data, loading } = useAsync(async () => db.getSettings(), [])
   const [form, setForm] = useState<Settings>(DEFAULT_SETTINGS)
   const [saving, setSaving] = useState(false)
+  const [active, setActive] = useState<Category>('commissions')
 
   useEffect(() => {
     if (data) setForm(data)
@@ -44,126 +86,188 @@ export default function SettingsPage() {
     push({ tone: 'info', title: 'Reset to defaults', desc: 'Save to apply.' })
   }
 
+  // Group nav items by group label for the sidebar
+  const groups = Array.from(new Set(NAV_ITEMS.map((n) => n.group)))
+  const meta = CATEGORY_TITLE[active]
+
   return (
     <PageContainer>
-      <div className="mb-6 flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="mt-1 text-sm text-ink-400">Configure level thresholds, commission rates, and referral bonuses.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" icon={<RotateCcw size={15} strokeWidth={1.75} />} onClick={reset}>Reset</Button>
-          <Button icon={<Save size={15} strokeWidth={1.75} />} onClick={save} disabled={saving || loading}>{saving ? 'Saving…' : 'Save changes'}</Button>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="mt-1 text-sm text-ink-400">{meta.desc}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Level thresholds" desc="Revenue needed to reach each level (€)" />
-          {loading ? (
-            <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-11 w-full rounded-xl" />)}</div>
-          ) : (
-            <div className="space-y-4">
-              <Field label="L1 threshold" hint="From 0 to this amount">
-                <Input type="number" min={0} value={form.l1_threshold} onChange={(e) => set('l1_threshold', Number(e.target.value))} />
-              </Field>
-              <Field label="L2 threshold" hint="From L1 threshold to this amount">
-                <Input type="number" min={0} value={form.l2_threshold} onChange={(e) => set('l2_threshold', Number(e.target.value))} />
-              </Field>
-              <Field label="L3 threshold" hint="Above this amount">
-                <Input type="number" min={0} value={form.l3_threshold} onChange={(e) => set('l3_threshold', Number(e.target.value))} />
-              </Field>
-            </div>
-          )}
-        </Card>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_1fr]">
+        {/* Sidebar — categories */}
+        <aside className="lg:sticky lg:top-4 lg:self-start">
+          <nav className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1.5 lg:flex-col lg:overflow-visible">
+            {groups.map((group) => (
+              <div key={group} className="flex gap-1 lg:flex-col">
+                <p className="hidden lg:block px-3 pt-3 pb-1 text-2xs font-medium uppercase tracking-wider text-ink-400">{group}</p>
+                {NAV_ITEMS.filter((n) => n.group === group).map((n) => {
+                  const isActive = active === n.id
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => setActive(n.id)}
+                      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:w-full ${
+                        isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
+                      }`}
+                    >
+                      <n.icon size={15} strokeWidth={1.75} />
+                      <span className="truncate">{n.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </nav>
+        </aside>
 
-        <Card>
-          <CardHeader title="Sales commission" desc="Percentage of gross value per level (seller's own deals)" />
-          {loading ? (
-            <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-11 w-full rounded-xl" />)}</div>
-          ) : (
-            <div className="space-y-4">
-              <Field label="L1 commission %" hint="10% by default">
-                <Input type="number" min={0} max={100} value={form.l1_commission_pct} onChange={(e) => set('l1_commission_pct', Number(e.target.value))} />
-              </Field>
-              <Field label="L2 commission %" hint="15% by default">
-                <Input type="number" min={0} max={100} value={form.l2_commission_pct} onChange={(e) => set('l2_commission_pct', Number(e.target.value))} />
-              </Field>
-              <Field label="L3 commission %" hint="20% by default">
-                <Input type="number" min={0} max={100} value={form.l3_commission_pct} onChange={(e) => set('l3_commission_pct', Number(e.target.value))} />
-              </Field>
+        {/* Content */}
+        <div className="min-w-0">
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-ink">{meta.title}</h2>
             </div>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader title="Referral commission" desc="Separate rate — earned from your direct referrals' deals" />
-          {loading ? (
-            <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-11 w-full rounded-xl" />)}</div>
-          ) : (
-            <div className="space-y-4">
-              <Field label="L1 referral %" hint="5% by default — earned on referral's gross value">
-                <Input type="number" min={0} max={100} value={form.l1_referral_pct} onChange={(e) => set('l1_referral_pct', Number(e.target.value))} />
-              </Field>
-              <Field label="L2 referral %" hint="5% by default">
-                <Input type="number" min={0} max={100} value={form.l2_referral_pct} onChange={(e) => set('l2_referral_pct', Number(e.target.value))} />
-              </Field>
-              <Field label="L3 referral %" hint="5% by default">
-                <Input type="number" min={0} max={100} value={form.l3_referral_pct} onChange={(e) => set('l3_referral_pct', Number(e.target.value))} />
-              </Field>
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader title="How it works" desc="Summary of the rules" />
-          <div className="space-y-2 text-sm text-ink-600">
-            <p>• <strong>Sales commission</strong> = the seller's level rate applied to their own deal gross value.</p>
-            <p>• <strong>Referral commission</strong> = the referrer's referral rate (separate from sales) applied to their direct referral's deal gross value.</p>
-            <p>• Levels auto-determined by total revenue (approved + closed deals).</p>
-            <p>• One-leg rule: only direct (first-level) referrals count — no cascading.</p>
-            <p>• Admin can override commission per seller or per deal.</p>
+            {active === 'commissions' && (
+              <div className="flex gap-2">
+                <Button variant="secondary" icon={<RotateCcw size={15} strokeWidth={1.75} />} onClick={reset}>Reset</Button>
+                <Button icon={<Save size={15} strokeWidth={1.75} />} onClick={save} disabled={saving || loading}>{saving ? 'Saving…' : 'Save changes'}</Button>
+              </div>
+            )}
           </div>
-        </Card>
-      </div>
 
-      <SystemStatusAdmin />
+          {/* ---------- Commissions ---------- */}
+          {active === 'commissions' && (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <Card>
+                <CardHeader title="Level thresholds" desc="Revenue needed to reach each level (€)" />
+                {loading ? (
+                  <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-11 w-full rounded-xl" />)}</div>
+                ) : (
+                  <div className="space-y-4">
+                    <Field label="L1 threshold" hint="From 0 to this amount">
+                      <Input type="number" min={0} value={form.l1_threshold} onChange={(e) => set('l1_threshold', Number(e.target.value))} />
+                    </Field>
+                    <Field label="L2 threshold" hint="From L1 threshold to this amount">
+                      <Input type="number" min={0} value={form.l2_threshold} onChange={(e) => set('l2_threshold', Number(e.target.value))} />
+                    </Field>
+                    <Field label="L3 threshold" hint="Above this amount">
+                      <Input type="number" min={0} value={form.l3_threshold} onChange={(e) => set('l3_threshold', Number(e.target.value))} />
+                    </Field>
+                  </div>
+                )}
+              </Card>
 
-      {/* ============= Notifications ============= */}
-      <div className="mt-8 mb-3">
-        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-          <Bell size={18} strokeWidth={1.75} className="text-ink-600" />
-          Notifications
-        </h2>
-        <p className="mt-1 text-sm text-ink-400">
-          Control which alerts admins receive, the format and tone of each notification, and your own preferences.
-        </p>
-      </div>
+              <Card>
+                <CardHeader title="Sales commission" desc="Percentage of gross value per level (seller's own deals)" />
+                {loading ? (
+                  <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-11 w-full rounded-xl" />)}</div>
+                ) : (
+                  <div className="space-y-4">
+                    <Field label="L1 commission %" hint="10% by default">
+                      <Input type="number" min={0} max={100} value={form.l1_commission_pct} onChange={(e) => set('l1_commission_pct', Number(e.target.value))} />
+                    </Field>
+                    <Field label="L2 commission %" hint="15% by default">
+                      <Input type="number" min={0} max={100} value={form.l2_commission_pct} onChange={(e) => set('l2_commission_pct', Number(e.target.value))} />
+                    </Field>
+                    <Field label="L3 commission %" hint="20% by default">
+                      <Input type="number" min={0} max={100} value={form.l3_commission_pct} onChange={(e) => set('l3_commission_pct', Number(e.target.value))} />
+                    </Field>
+                  </div>
+                )}
+              </Card>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Card>
-          <CardHeader
-            title="Your notification preferences"
-            desc="Enable or disable each alert type for your own account."
-          />
-          <NotificationPreferences />
-        </Card>
+              <Card>
+                <CardHeader title="Referral commission" desc="Separate rate — earned from your direct referrals' deals" />
+                {loading ? (
+                  <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-11 w-full rounded-xl" />)}</div>
+                ) : (
+                  <div className="space-y-4">
+                    <Field label="L1 referral %" hint="5% by default — earned on referral's gross value">
+                      <Input type="number" min={0} max={100} value={form.l1_referral_pct} onChange={(e) => set('l1_referral_pct', Number(e.target.value))} />
+                    </Field>
+                    <Field label="L2 referral %" hint="5% by default">
+                      <Input type="number" min={0} max={100} value={form.l2_referral_pct} onChange={(e) => set('l2_referral_pct', Number(e.target.value))} />
+                    </Field>
+                    <Field label="L3 referral %" hint="5% by default">
+                      <Input type="number" min={0} max={100} value={form.l3_referral_pct} onChange={(e) => set('l3_referral_pct', Number(e.target.value))} />
+                    </Field>
+                  </div>
+                )}
+              </Card>
 
-        <Card>
-          <CardHeader
-            title="Notification templates"
-            desc="Edit the title and body format applied to every push notification. Disabling a type here suppresses it for everyone."
-          />
-          <NotificationTemplateEditor />
-        </Card>
+              <Card>
+                <CardHeader title="How it works" desc="Summary of the rules" />
+                <div className="space-y-2 text-sm text-ink-600">
+                  <p>• <strong>Sales commission</strong> = the seller's level rate applied to their own deal gross value.</p>
+                  <p>• <strong>Referral commission</strong> = the referrer's referral rate (separate from sales) applied to their direct referral's deal gross value.</p>
+                  <p>• Levels auto-determined by total revenue (approved + closed deals).</p>
+                  <p>• One-leg rule: only direct (first-level) referrals count — no cascading.</p>
+                  <p>• Admin can override commission per seller or per deal.</p>
+                </div>
+              </Card>
+            </div>
+          )}
 
-        <Card className="lg:col-span-2">
-          <CardHeader
-            title="Push delivery log"
-            desc="Most recent push attempts, written by the Edge Function. Empty after a test means the trigger can't reach the function."
-          />
-          <PushDeliveryLog />
-        </Card>
+          {/* ---------- Notifications: Preferences ---------- */}
+          {active === 'notif-preferences' && (
+            <Card>
+              <CardHeader title="Your notification preferences" desc="Enable or disable each alert type for your own account." />
+              <NotificationPreferences />
+            </Card>
+          )}
+
+          {/* ---------- Notifications: Templates ---------- */}
+          {active === 'notif-templates' && (
+            <Card>
+              <CardHeader title="Notification templates" desc="Edit the title and body format applied to every push notification. Disabling a type here suppresses it for everyone." />
+              <NotificationTemplateEditor />
+            </Card>
+          )}
+
+          {/* ---------- Notifications: Delivery Log ---------- */}
+          {active === 'notif-log' && (
+            <Card>
+              <CardHeader title="Push delivery log" desc="Successful push deliveries, written by the Edge Function." />
+              <PushDeliveryLog status="sent" limit={50} />
+            </Card>
+          )}
+
+          {/* ---------- Notifications: Errors ---------- */}
+          {active === 'notif-errors' && (
+            <Card>
+              <CardHeader title="Notification errors" desc="Failed and skipped pushes. Empty after a test means the trigger can't reach the function — check app_secrets." />
+              <PushDeliveryLog status="error" limit={50} />
+            </Card>
+          )}
+
+          {/* ---------- System status ---------- */}
+          {active === 'system' && <SystemStatusAdmin />}
+
+          {/* ---------- LogBook ---------- */}
+          {active === 'logbook' && (
+            <Card>
+              <CardHeader
+                title={<span className="flex items-center gap-2"><BookOpen size={16} strokeWidth={1.75} className="text-ink-600" />LogBook</span>}
+                desc="Every error and warning logged across the platform."
+              />
+              <LogBook />
+            </Card>
+          )}
+
+          {/* ---------- ChangeLog manager ---------- */}
+          {active === 'changelog' && (
+            <Card>
+              <CardHeader
+                title={<span className="flex items-center gap-2"><Sparkles size={16} strokeWidth={1.75} className="text-ink-600" />ChangeLog</span>}
+                desc="Release notes shown to all users in the sidebar. Drafts are hidden until published."
+              />
+              <ChangeLogManager />
+            </Card>
+          )}
+        </div>
       </div>
     </PageContainer>
   )

@@ -7,7 +7,7 @@ import type {
   FinanceEntry, FinanceCategory, FinanceKind,
   ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
   MessagePriority, MessageFolder,
-  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry,
+  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -1049,14 +1049,6 @@ async deleteFinanceEntry(id: string): Promise<void> {
     if (error) throw error
   },
 
-  /* ---------- delivery log (admin) ---------- */
-  async listPushLog(limit = 25): Promise<PushLogEntry[]> {
-    const { data, error } = await supabase!.from('push_log')
-      .select('*').order('created_at', { ascending: false }).limit(limit)
-    if (error) throw error
-    return (data || []) as PushLogEntry[]
-  },
-
   /* ---------- test notification (full pipeline: insert → trigger → edge → push) ---------- */
   async sendTestPush(userId: string): Promise<void> {
     const { error } = await supabase!.from('inbox_messages').insert({
@@ -1070,6 +1062,65 @@ async deleteFinanceEntry(id: string): Promise<void> {
       action_url: '/inbox',
       metadata: { kind: 'test_push' },
     })
+    if (error) throw error
+  },
+
+  /* ---------- push log (admin) — listPushLog now supports status filter ---------- */
+  async listPushLog(opts: { limit?: number; status?: 'sent' | 'skipped' | 'error' | 'all' } = {}): Promise<PushLogEntry[]> {
+    const limit = opts.limit ?? 25
+    let q = supabase!.from('push_log').select('*').order('created_at', { ascending: false }).limit(limit)
+    if (opts.status && opts.status !== 'all') q = q.eq('status', opts.status)
+    const { data, error } = await q
+    if (error) throw error
+    return (data || []) as PushLogEntry[]
+  },
+
+  /* ---------- error logs (LogBook) ---------- */
+  async listErrorLogs(limit = 100): Promise<ErrorLogEntry[]> {
+    const { data, error } = await supabase!.from('error_logs')
+      .select('*').order('created_at', { ascending: false }).limit(limit)
+    if (error) throw error
+    return (data || []) as ErrorLogEntry[]
+  },
+
+  async createErrorLog(entry: { source: string; severity?: 'info' | 'warn' | 'error'; message: string; detail?: string; metadata?: Record<string, unknown> }): Promise<void> {
+    const { error } = await supabase!.from('error_logs').insert({
+      source: entry.source,
+      severity: entry.severity ?? 'error',
+      message: entry.message,
+      detail: entry.detail ?? '',
+      metadata: entry.metadata ?? {},
+    })
+    if (error) throw error
+  },
+
+  /* ---------- changelog (admin CRUD, user read) ---------- */
+  async listChangelog(includeDrafts = false): Promise<ChangelogEntry[]> {
+    let q = supabase!.from('changelog').select('*').order('created_at', { ascending: false })
+    if (!includeDrafts) q = q.eq('published', true)
+    const { data, error } = await q
+    if (error) throw error
+    return (data || []) as ChangelogEntry[]
+  },
+
+  async createChangelog(entry: { label: ChangelogLabel; version?: string; title: string; body?: string; published?: boolean }): Promise<void> {
+    const { error } = await supabase!.from('changelog').insert({
+      label: entry.label,
+      version: entry.version ?? '',
+      title: entry.title,
+      body: entry.body ?? '',
+      published: entry.published ?? true,
+    })
+    if (error) throw error
+  },
+
+  async updateChangelog(id: string, patch: Partial<{ label: ChangelogLabel; version: string; title: string; body: string; published: boolean }>): Promise<void> {
+    const { error } = await supabase!.from('changelog').update(patch).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteChangelog(id: string): Promise<void> {
+    const { error } = await supabase!.from('changelog').delete().eq('id', id)
     if (error) throw error
   },
 }

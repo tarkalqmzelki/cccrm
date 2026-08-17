@@ -5,9 +5,9 @@ import { CheckCircle2, AlertTriangle, MinusCircle } from 'lucide-react'
 import type { PushLogEntry } from '../lib/types'
 
 const STATUS_META: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
-  sent:    { icon: CheckCircle2, color: 'text-pos', label: 'Delivered' },
+  sent:    { icon: CheckCircle2, color: 'text-pos',    label: 'Delivered' },
   skipped: { icon: MinusCircle,  color: 'text-ink-400', label: 'Skipped' },
-  error:   { icon: AlertTriangle, color: 'text-neg', label: 'Error' },
+  error:   { icon: AlertTriangle, color: 'text-neg',   label: 'Error' },
 }
 
 function timeAgo(iso: string): string {
@@ -18,14 +18,20 @@ function timeAgo(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+interface Props {
+  /** Filter by status — 'sent' for the delivery log, 'error' for the
+   *  error log, 'all' to see everything (default). */
+  status?: 'sent' | 'skipped' | 'error' | 'all'
+  limit?: number
+}
+
 /**
- * Admin-only panel showing the most recent push delivery attempts
- * (written by the send-push Edge Function).  Makes silent pipeline
- * failures visible: empty log after a test = trigger → function call
- * is failing (check edge_url / edge_bearer in app_secrets).
+ * Push delivery log — admin-only.  Reads from `push_log` (written by
+ * the send-push Edge Function).  Use `status="sent"` for the delivery
+ * view, `status="error"` for the errors view.
  */
-export function PushDeliveryLog() {
-  const { data, loading, reload } = useAsync(async () => db.listPushLog(15), [])
+export function PushDeliveryLog({ status = 'all', limit = 25 }: Props) {
+  const { data, loading, reload } = useAsync(async () => db.listPushLog({ status, limit }), [status, limit])
 
   if (loading) {
     return (
@@ -42,16 +48,15 @@ export function PushDeliveryLog() {
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-line px-4 py-6 text-center">
-        <p className="text-sm text-ink-400">No pushes attempted yet.</p>
+        <p className="text-sm text-ink-400">No entries yet.</p>
         <p className="mt-1 text-2xs text-ink-400">
-          Send a test notification from your profile. If the log stays empty, the database trigger can’t reach the
-          Edge Function — check <code className="rounded bg-ink-100 px-1">edge_url</code> /{' '}
-          <code className="rounded bg-ink-100 px-1">edge_bearer</code> in <code className="rounded bg-ink-100 px-1">app_secrets</code>.
+          {status === 'sent'
+            ? 'Successful pushes will appear here.'
+            : status === 'error'
+              ? 'Push failures (VAPID auth, network, expired subscriptions) will appear here.'
+              : 'Send a test notification from your profile — log entries will appear here.'}
         </p>
-        <button
-          onClick={reload}
-          className="mt-3 text-2xs font-medium text-ink-600 underline underline-offset-2 hover:text-ink"
-        >
+        <button onClick={reload} className="mt-3 text-2xs font-medium text-ink-600 underline underline-offset-2 hover:text-ink">
           Refresh
         </button>
       </div>
@@ -70,16 +75,13 @@ export function PushDeliveryLog() {
                 {meta.label}
                 {r.key && <span className="ml-1.5 font-normal text-ink-400">{r.key}</span>}
               </p>
-              <p className="text-2xs text-ink-400">{r.detail}</p>
+              <p className="text-2xs text-ink-400 break-words">{r.detail}</p>
             </div>
             <span className="shrink-0 text-2xs text-ink-300">{timeAgo(r.created_at)}</span>
           </div>
         )
       })}
-      <button
-        onClick={reload}
-        className="mt-1 text-2xs font-medium text-ink-600 underline underline-offset-2 hover:text-ink"
-      >
+      <button onClick={reload} className="mt-1 text-2xs font-medium text-ink-600 underline underline-offset-2 hover:text-ink">
         Refresh
       </button>
     </div>
