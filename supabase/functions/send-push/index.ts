@@ -41,12 +41,19 @@ function b64uEncode(buf: ArrayBuffer | Uint8Array): string {
 const ENC = new TextEncoder()
 
 // ---------- VAPID JWT (ES256) ----------
-async function vapidJwt(): Promise<string> {
+//
+// Per RFC 8292 the `aud` claim MUST be the origin of the push service
+// endpoint (e.g. https://fcm.googleapis.com for Chrome, https://web.push.apple.com
+// for Safari).  Using any other value (e.g. the Supabase URL) causes
+// the push service to reject the VAPID JWT with 401/403 and silently
+// drop the notification — no error surfaces in the browser.
+async function vapidJwt(endpoint: string): Promise<string> {
+  const aud = new URL(endpoint).origin
   const header = b64uEncode(ENC.encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })))
   const payload = b64uEncode(
     ENC.encode(
       JSON.stringify({
-        aud: new URL(SUPABASE_URL).origin,
+        aud,
         exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
         sub: VAPID_SUBJECT,
       }),
@@ -136,7 +143,16 @@ async function encryptPayload(payload: string, p256dh: string, auth: string): Pr
   return record
 }
 
+/**
+ * Returns 'ok' on HTTP 2xx, 'gone' on 404/410 (subscription expired),
+ * 'error' otherwise — and writes the failure detail to push_log via
+ * the caller (we return the status + body in lastError).
+ */
+let lastError: string = ''
+function lastPushError(): string { return lastError }
+
 async function sendPush(sub: { endpoint: string; p256dh: string; auth_key: string }, payload: string, vapid: string): Promise<'ok' | 'gone' | 'error'> {
+  lastError = ''
   try {
     const encrypted = await encryptPayload(payload, sub.p256dh, sub.auth_key)
     const res = await fetch(sub.endpoint, {
@@ -150,9 +166,15 @@ async function sendPush(sub: { endpoint: string; p256dh: string; auth_key: strin
       body: encrypted,
     })
     if (res.status === 404 || res.status === 410) return 'gone'
-    if (!res.ok) console.warn('push failed', sub.endpoint, res.status, await res.text())
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      lastError = `HTTP ${res.status} from ${new URL(sub.endpoint).origin}: ${text || res.statusText}`
+      console.warn('push failed', sub.endpoint, res.status, text)
+      return 'error'
+    }
     return 'ok'
-  } catch (e) {
+  } catch (e: any) {
+    lastError = `Network error: ${e?.message ?? e}`
     console.warn('push error', e)
     return 'error'
   }
@@ -254,10 +276,18 @@ Deno.serve(async (req) => {
       return json({ sent: 0, reason: 'no_subscriptions' })
     }
 
-    const vapid = await vapidJwt()
     let sent = 0
     const gone: string[] = []
+    const vapidCache = new Map<string, string>()
     for (const s of list) {
+      // Cache VAPID JWT per push-service origin (FCM, APNs, Mozilla) so
+      // we don't re-sign for every endpoint of the same service.
+      const origin = new URL(s.endpoint).origin
+      let vapid = vapidCache.get(origin)
+      if (!vapid) {
+        vapid = await vapidJwt(s.endpoint)
+        vapidCache.set(origin, vapid)
+      }
       const r = await sendPush(s, payload, vapid)
       if (r === 'ok') sent++
       if (r === 'gone') gone.push(s.endpoint)
@@ -269,7 +299,7 @@ Deno.serve(async (req) => {
       sent > 0 ? 'sent' : 'error',
       sent > 0
         ? `Delivered to ${sent}/${list.length} device(s)${gone.length ? `, removed ${gone.length} expired` : ''}`
-        : 'All device pushes failed — check Edge Function logs (VAPID keys or endpoint errors)',
+        : `All device pushes failed: ${lastPushError() || 'unknown — check Edge Function logs'}`,
       sent,
       key,
     )
