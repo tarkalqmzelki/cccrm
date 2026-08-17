@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Building2, Globe, MapPin, Plus, Clock, Briefcase,
-  ChevronRight, UserPlus, FileText, Network, Lock, Pencil,
+  ChevronRight, UserPlus, FileText, Network, Lock, Pencil, Bell,
   ArrowBigUp, ArrowBigDown, MessageSquare, Send, Phone, Mail, Calendar,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -21,8 +21,11 @@ import { useToast } from '../context/ToastContext'
 import { CreateOppModal } from '../components/CreateOppModal'
 import { ContactCard } from '../components/ContactCard'
 import { RequestAccessButton } from '../components/RequestAccessButton'
+import { LeadReminderModal } from '../components/LeadReminderModal'
+import { LeadStatusPicker } from '../components/LeadStatusPicker'
 import type { Company, Opportunity, Profile, Activity, CompanyNote, ServiceItem, Contact, NoteComment, AccessRequest, CompanyFollowUp } from '../lib/types'
-import { OPP_STATUS_META } from '../lib/types'
+import { OPP_STATUS_META, LEAD_STATUS_META } from '../lib/types'
+import type { LeadStatus } from '../lib/types'
 import { eur, dateShort, dateLong } from '../lib/format'
 
 type Tab = 'summary' | 'offers' | 'contacts' | 'comments' | 'timeline'
@@ -34,6 +37,7 @@ export default function CompanyDetail() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('summary')
   const [createOppOpen, setCreateOppOpen] = useState(false)
+  const [reminderOpen, setReminderOpen] = useState(false)
   const [addContactOpen, setAddContactOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editSummaryOpen, setEditSummaryOpen] = useState(false)
@@ -142,11 +146,33 @@ export default function CompanyDetail() {
             </div>
           </div>
         )}
+        {/* Lead status — inline changer for owner/admin, badge for others */}
+        {company.lead_status && (
+          <div className="flex items-center gap-2">
+            <LeadStatusPicker
+              status={company.lead_status as LeadStatus}
+              canEdit={!!canEditCompany}
+              onChange={async (s) => {
+                try {
+                  await db.updateLeadStatus(company.id, s)
+                  push({ tone: 'success', title: 'Lead status updated', desc: LEAD_STATUS_META[s].label })
+                  reload()
+                } catch (e: any) {
+                  push({ tone: 'error', title: 'Could not update', desc: e?.message })
+                }
+              }}
+            />
+          </div>
+        )}
         {canEditCompany && (
           <div className="flex items-center gap-2">
             <Button variant="secondary" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
+            <Button variant="secondary" icon={<Bell size={15} strokeWidth={1.75} />} onClick={() => setReminderOpen(true)}>Remind Me</Button>
             {canAddOffer && <Button icon={<Plus size={15} strokeWidth={1.75} />} onClick={() => setCreateOppOpen(true)}>New Offer</Button>}
           </div>
+        )}
+        {!canEditCompany && user && (
+          <Button variant="secondary" icon={<Bell size={15} strokeWidth={1.75} />} onClick={() => setReminderOpen(true)}>Remind Me</Button>
         )}
       </div>
 
@@ -284,6 +310,7 @@ export default function CompanyDetail() {
       )}
 
       <CreateOppModal open={createOppOpen} onClose={() => setCreateOppOpen(false)} onSaved={() => { setCreateOppOpen(false); reload() }} presetCompany={company} />
+      <LeadReminderModal open={reminderOpen} onClose={() => setReminderOpen(false)} company={company} />
       {canEditCompany && <AddContactModal open={addContactOpen} onClose={() => setAddContactOpen(false)} companyId={company.id} userId={user?.id || ''} onSaved={() => { setAddContactOpen(false); reload() }} />}
       {canEditCompany && <EditCompanyModal open={editOpen} onClose={() => setEditOpen(false)} company={company} onSaved={() => { setEditOpen(false); reload() }} />}
       {canEditCompany && <EditSummaryModal open={editSummaryOpen} onClose={() => setEditSummaryOpen(false)} company={company} onSaved={() => { setEditSummaryOpen(false); reload() }} />}

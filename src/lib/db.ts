@@ -7,7 +7,7 @@ import type {
   FinanceEntry, FinanceCategory, FinanceKind,
   ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
   MessagePriority, MessageFolder,
-  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel,
+  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel, LeadReminder, LeadStatus, AdminDoc,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -318,6 +318,15 @@ export const db = {
 
   async deleteCompany(id: string): Promise<void> {
     const { error } = await supabase!.from('companies').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- LEAD STATUS (on companies table) ---------- */
+  async updateLeadStatus(id: string, status: LeadStatus): Promise<void> {
+    const { error } = await supabase!
+      .from('companies')
+      .update({ lead_status: status, lead_status_updated_at: iso(), updated_at: iso() })
+      .eq('id', id)
     if (error) throw error
   },
 
@@ -1135,6 +1144,59 @@ async deleteFinanceEntry(id: string): Promise<void> {
 
   async deleteChangelog(id: string): Promise<void> {
     const { error } = await supabase!.from('changelog').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- LEAD REMINDERS ---------- */
+  async createLeadReminder(r: { user_id: string; company_id: string; remind_at: string; title?: string; body?: string }): Promise<void> {
+    const { error } = await supabase!.from('lead_reminders').insert({
+      user_id: r.user_id,
+      company_id: r.company_id,
+      remind_at: r.remind_at,
+      title: r.title ?? '',
+      body: r.body ?? '',
+    })
+    if (error) throw error
+  },
+
+  async listLeadReminders(userId: string): Promise<LeadReminder[]> {
+    const { data, error } = await supabase!.from('lead_reminders')
+      .select('*').eq('user_id', userId).order('remind_at', { ascending: false })
+    if (error) throw error
+    return (data || []) as LeadReminder[]
+  },
+
+  async deleteLeadReminder(id: string): Promise<void> {
+    const { error } = await supabase!.from('lead_reminders').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- ADMIN DOCS (knowledge base) ---------- */
+  async listAdminDocs(): Promise<AdminDoc[]> {
+    const { data, error } = await supabase!.from('admin_docs')
+      .select('*').order('updated_at', { ascending: false })
+    if (error) throw error
+    return (data || []) as AdminDoc[]
+  },
+
+  async createAdminDoc(entry: { title: string; body?: string; category?: string; tags?: string[] }): Promise<void> {
+    const { error } = await supabase!.from('admin_docs').insert({
+      title: entry.title,
+      body: entry.body ?? '',
+      category: entry.category ?? 'General',
+      tags: entry.tags ?? [],
+    })
+    if (error) throw error
+  },
+
+  async updateAdminDoc(id: string, patch: Partial<{ title: string; body: string; category: string; tags: string[] }>): Promise<void> {
+    const { error } = await supabase!.from('admin_docs')
+      .update({ ...patch, updated_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteAdminDoc(id: string): Promise<void> {
+    const { error } = await supabase!.from('admin_docs').delete().eq('id', id)
     if (error) throw error
   },
 }

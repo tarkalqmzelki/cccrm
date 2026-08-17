@@ -49,9 +49,26 @@ export interface Company {
   logo_url: string
   summary: string
   created_by: string | null
+  lead_status: LeadStatus
+  lead_status_updated_at: string | null
   created_at: string
   updated_at: string
 }
+
+/** Per-lead status, separate from opp/deal status. Settable by lead
+ *  owner or admin on the Leads page or CompanyDetail header. */
+export type LeadStatus = 'new' | 'contacted' | 'interested' | 'in_progress' | 'won' | 'lost'
+
+export const LEAD_STATUS_META: Record<LeadStatus, { label: string; tone: 'neutral' | 'info' | 'warn' | 'pos' | 'neg' }> = {
+  new:         { label: 'New',           tone: 'info' },
+  contacted:   { label: 'Contacted',     tone: 'neutral' },
+  interested:  { label: 'Interested',    tone: 'warn' },
+  in_progress: { label: 'In progress',   tone: 'info' },
+  won:         { label: 'Won',            tone: 'pos' },
+  lost:        { label: 'Lost',          tone: 'neg' },
+}
+
+export const LEAD_STATUSES = Object.keys(LEAD_STATUS_META) as LeadStatus[]
 
 export interface Contact {
   id: string
@@ -483,6 +500,7 @@ export type NotificationKey =
   | 'user_deal_approved'
   | 'user_lead_status'
   | 'user_payout'
+  | 'user_lead_reminder'
 
 export interface NotificationKeyMeta {
   key: NotificationKey
@@ -502,6 +520,7 @@ export const NOTIFICATION_KEYS: NotificationKeyMeta[] = [
   { key: 'user_deal_approved',    label: 'Deal approved',          desc: 'When one of your deals is approved.',        role: 'user'  },
   { key: 'user_lead_status',      label: 'Lead status changes',    desc: 'When the status of your lead is updated.',   role: 'user'  },
   { key: 'user_payout',           label: 'Payout received',        desc: 'When one of your payouts is marked paid.',   role: 'user'  },
+  { key: 'user_lead_reminder',    label: 'Lead reminders',         desc: 'Reminders you scheduled for your leads.',   role: 'user'  },
 ]
 
 export type NotificationTone = 'low' | 'normal' | 'high' | 'urgent'
@@ -533,7 +552,32 @@ export interface PushSubscription {
   created_at: string
 }
 
-/** One row per send-push Edge Function invocation (see schema30.sql). */
+/** Scheduled lead reminder — fires a push notification at remind_at. */
+export interface LeadReminder {
+  id: string
+  user_id: string
+  company_id: string
+  remind_at: string
+  title: string
+  body: string
+  sent: boolean
+  created_at: string
+}
+
+/** Admin-only knowledge base entry.  Body is markdown source; the UI
+ *  renders it with react-markdown so pasted code blocks render
+ *  correctly.  Categories are user-defined free-form strings (the UI
+ *  collects distinct values for the dropdown). */
+export interface AdminDoc {
+  id: string
+  created_at: string
+  updated_at: string
+  title: string
+  body: string
+  category: string
+  tags: string[]
+  created_by: string | null
+}
 export interface PushLogEntry {
   id: string
   created_at: string

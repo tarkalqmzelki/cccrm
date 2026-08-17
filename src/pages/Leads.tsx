@@ -1,27 +1,40 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Building2, Globe, Briefcase, Users, Pencil, Trash2, Eye, Lock } from 'lucide-react'
+import { Plus, Search, Building2, Globe, Users, Pencil, Trash2, Eye, Lock, Filter, X } from 'lucide-react'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
 import { useAuth } from '../context/AuthContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { Input } from '../components/ui/Input'
+import { Input, Select } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
 import { Avatar } from '../components/ui/Avatar'
 import { Table, useSort, type Column } from '../components/ui/Table'
 import { PageContainer } from '../components/layout/AppShell'
 import { CreateOppModal } from '../components/CreateOppModal'
+import { LeadStatusPicker } from '../components/LeadStatusPicker'
 import { openContextMenu, type CtxItem } from '../components/ui/ContextMenu'
 import { Modal } from '../components/ui/Modal'
 import { useToast } from '../context/ToastContext'
 import type { Company, Opportunity, Profile } from '../lib/types'
+import type { LeadStatus } from '../lib/types'
+import { LEAD_STATUS_META, LEAD_STATUSES } from '../lib/types'
+import { dateShort } from '../lib/format'
 
 interface CompanyRow {
   company: Company
   opps: Opportunity[]
   owners: Profile[]
 }
+
+/** Time-filter presets.  'all' = no time filter; otherwise days back. */
+type TimeFilter = 'all' | '7d' | '30d' | '90d'
+const TIME_FILTERS: { value: TimeFilter; label: string; days?: number }[] = [
+  { value: 'all', label: 'All time' },
+  { value: '7d',  label: 'Last 7 days',  days: 7 },
+  { value: '30d', label: 'Last 30 days', days: 30 },
+  { value: '90d', label: 'Last 90 days', days: 90 },
+]
 
 export default function Leads() {
   const { user } = useAuth()
@@ -30,6 +43,13 @@ export default function Leads() {
   const [query, setQuery] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Company | null>(null)
+
+  // New filters
+  const [scope, setScope] = useState<'all' | 'mine'>('all')
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | LeadStatus>('all')
+  const [ownerFilter, setOwnerFilter] = useState<'all' | string>('all')
+
   const { data, loading, reload } = useAsync(async () => {
     const [companies, opps, profiles] = await Promise.all([
       db.listCompanies(), db.listOpportunities(), db.listProfiles(),
@@ -52,18 +72,36 @@ export default function Leads() {
       seen.add(c.id)
       return true
     })
+
+    // Pre-compute cutoff timestamp for the time filter
+    const cutoffMs = timeFilter === 'all' ? 0 : Date.now() - ((TIME_FILTERS.find((t) => t.value === timeFilter)?.days ?? 0) * 24 * 60 * 60 * 1000)
+
     return unique.map((company) => {
       const opps = data.opps.filter((o) => o.company_id === company.id)
       const owners = opps.map((o) => profileMap[o.owner_id]).filter(Boolean) as Profile[]
       return { company, opps, owners }
     }).filter((r) => {
-      if (!query.trim()) return true
-      const q = query.toLowerCase()
-      return r.company.name.toLowerCase().includes(q)
-        || r.company.domain.toLowerCase().includes(q)
-        || r.company.website.toLowerCase().includes(q)
+      // Text search
+      if (query.trim()) {
+        const q = query.toLowerCase()
+        if (!r.company.name.toLowerCase().includes(q)
+          && !r.company.domain.toLowerCase().includes(q)
+          && !r.company.website.toLowerCase().includes(q)) return false
+      }
+      // Scope: My leads vs All
+      if (scope === 'mine' && r.company.created_by !== user?.id) return false
+      // Time filter — created within last N days
+      if (cutoffMs > 0) {
+        const createdAt = new Date(r.company.created_at).getTime()
+        if (createdAt < cutoffMs) return false
+      }
+      // Status filter — lead_status column
+      if (statusFilter !== 'all' && r.company.lead_status !== statusFilter) return false
+      // Owner filter
+      if (ownerFilter !== 'all' && r.company.created_by !== ownerFilter) return false
+      return true
     })
-  }, [data, query, profileMap])
+  }, [data, query, scope, timeFilter, statusFilter, ownerFilter, user?.id, profileMap])
 
   const { sort, toggle } = useSort('name', 'asc')
   const sorted = useMemo(() => {
@@ -71,6 +109,7 @@ export default function Leads() {
     const get = (r: CompanyRow): string | number => {
       if (sort.key === 'opps') return r.opps.length
       if (sort.key === 'revenue') return r.opps.reduce((s, o) => s + (o.offer_value || o.est_revenue || 0), 0)
+      if (sort.key === 'created') return new Date(r.company.created_at).getTime()
       return r.company.name.toLowerCase()
     }
     return [...rows].sort((a, b) => { const av = get(a), bv = get(b); return av < bv ? -dir : av > bv ? dir : 0 })
@@ -84,6 +123,16 @@ export default function Leads() {
       reload()
     } catch (e: any) {
       push({ tone: 'error', title: 'Could not delete', desc: e?.message })
+    }
+  }
+
+  async function changeLeadStatus(companyId: string, status: LeadStatus) {
+    try {
+      await db.updateLeadStatus(companyId, status)
+      push({ tone: 'success', title: 'Lead status updated', desc: LEAD_STATUS_META[status].label })
+      reload()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not update', desc: e?.message })
     }
   }
 
@@ -108,6 +157,13 @@ export default function Leads() {
     }
     return items
   }
+
+  // Owner dropdown options — anyone who created a lead (or admins)
+  const ownerOptions = useMemo(() => {
+    if (!data) return []
+    const creatorIds = Array.from(new Set(data.companies.map((c) => c.created_by).filter(Boolean) as string[]))
+    return creatorIds.map((id) => ({ value: id, label: profileMap[id]?.full_name ?? 'Unknown' })).sort((a, b) => a.label.localeCompare(b.label))
+  }, [data, profileMap])
 
   const columns: Column<CompanyRow>[] = [
     { key: 'name', header: 'Company', sortable: true, cell: (r) => (
@@ -144,11 +200,24 @@ export default function Leads() {
         €{r.opps.reduce((s, o) => s + (o.offer_value || o.est_revenue || 0), 0).toLocaleString('en')}
       </span>
     ) },
-    { key: 'status', header: 'Status', cell: (r) => {
-      const active = r.opps.filter((o) => !['won','lost','archived'].includes(o.status)).length
-      return <Badge tone={active > 0 ? 'pos' : 'neutral'} dot>{active} active</Badge>
+    { key: 'status', header: 'Lead Status', cell: (r) => {
+      const canEdit = user?.id === r.company.created_by || user?.role === 'admin'
+      const current = (r.company.lead_status ?? 'new') as LeadStatus
+      return <LeadStatusPicker status={current} canEdit={canEdit} onChange={(s) => changeLeadStatus(r.company.id, s)} />
     } },
+    { key: 'created', header: 'Created', align: 'right', sortable: true, cell: (r) => (
+      <span className="text-2xs text-ink-400 num">{dateShort(r.company.created_at)}</span>
+    ) },
   ]
+
+  const hasActiveFilters = scope !== 'all' || timeFilter !== 'all' || statusFilter !== 'all' || ownerFilter !== 'all'
+
+  function clearFilters() {
+    setScope('all')
+    setTimeFilter('all')
+    setStatusFilter('all')
+    setOwnerFilter('all')
+  }
 
   return (
     <PageContainer>
@@ -161,10 +230,58 @@ export default function Leads() {
       </div>
 
       <Card>
-        <div className="mb-3 relative w-full sm:max-w-xs">
-          <Search size={16} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search companies…" className="pl-9 h-10" />
+        {/* Filter row: search + scope toggle + dropdowns */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {/* Search */}
+          <div className="relative w-full sm:w-64 sm:max-w-xs">
+            <Search size={16} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search companies…" className="pl-9 h-10" />
+          </div>
+
+          {/* My vs All toggle */}
+          <div className="flex rounded-xl border border-line bg-surface p-0.5">
+            <button
+              onClick={() => setScope('all')}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                scope === 'all' ? 'bg-ink text-white' : 'text-ink-500 hover:text-ink'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setScope('mine')}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                scope === 'mine' ? 'bg-ink text-white' : 'text-ink-500 hover:text-ink'
+              }`}
+            >
+              My leads
+            </button>
+          </div>
+
+          {/* Time filter */}
+          <Select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value as TimeFilter)} className="h-10 w-36">
+            {TIME_FILTERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </Select>
+
+          {/* Status filter */}
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | LeadStatus)} className="h-10 w-36">
+            <option value="all">All statuses</option>
+            {LEAD_STATUSES.map((s) => <option key={s} value={s}>{LEAD_STATUS_META[s].label}</option>)}
+          </Select>
+
+          {/* Owner filter */}
+          <Select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="h-10 w-40">
+            <option value="all">All owners</option>
+            {ownerOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </Select>
+
+          {hasActiveFilters && (
+            <button onClick={clearFilters} className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-2xs font-medium text-ink-500 hover:bg-ink-50">
+              <X size={13} strokeWidth={1.75} /> Clear
+            </button>
+          )}
         </div>
+
         <Table
           columns={columns}
           rows={sorted}
@@ -174,7 +291,7 @@ export default function Leads() {
           loading={loading}
           onRowClick={(r) => navigate(`/leads/${r.company.id}`)}
           onRowContext={(e, r) => openContextMenu(e, ctxItems(r))}
-          empty={<div className="flex flex-col items-center gap-3 py-12"><Building2 size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No leads yet — create your first one</p></div>}
+          empty={<div className="flex flex-col items-center gap-3 py-12"><Building2 size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No leads match your filters — try clearing them or create a new lead</p></div>}
         />
       </Card>
 

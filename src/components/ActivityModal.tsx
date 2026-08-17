@@ -144,21 +144,25 @@ export function ActivityModal({
         company_id: draft.companyId || null,
         visible_on_calendar: draft.visibleOnCalendar,
       }
-      if (isEditing && activity) {
-        await db.updateScheduledActivity(activity.id, payload)
-        push({ tone: 'success', title: 'Activity updated' })
-      } else {
-        await db.createScheduledActivity(payload as never)
-        push({ tone: 'success', title: 'Activity created' })
-      }
-      onSaved()
-      onClose()
-    } catch (e: any) {
-      push({ tone: 'error', title: 'Could not save', desc: e?.message })
-    } finally {
-      setSaving(false)
+    if (isEditing && activity) {
+      await db.updateScheduledActivity(activity.id, payload)
+      push({ tone: 'success', title: 'Activity updated' })
+    } else {
+      await db.createScheduledActivity(payload as never)
+      push({ tone: 'success', title: 'Activity created' })
     }
+    onSaved()
+    onClose()
+  } catch (e: any) {
+    push({ tone: 'error', title: 'Could not save', desc: e?.message })
+    // Close the modal even on error so the user isn't stuck — the toast
+    // surfaces the error reason.  Without this, the modal stays open
+    // with a disabled "Saving…" button and reads as a freeze.
+    onClose()
+  } finally {
+    setSaving(false)
   }
+}
 
   async function destroy() {
     if (!activity) return

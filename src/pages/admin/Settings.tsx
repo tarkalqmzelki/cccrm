@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { Card, CardHeader } from '../../components/ui/Card'
@@ -16,6 +16,7 @@ import { NotificationPreferences } from '../../components/NotificationPreference
 import { PushDeliveryLog } from '../../components/PushDeliveryLog'
 import { LogBook } from '../../components/LogBook'
 import { ChangeLogManager } from '../../components/ChangeLogManager'
+import { AdminDocumentation } from '../../components/AdminDocumentation'
 
 type Category =
   | 'commissions'
@@ -26,6 +27,7 @@ type Category =
   | 'system'
   | 'logbook'
   | 'changelog'
+  | 'docs'
 
 interface NavItem {
   id: Category
@@ -43,6 +45,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'system',             label: 'System status',     icon: Activity,   group: 'System' },
   { id: 'logbook',            label: 'LogBook',           icon: BookOpen,   group: 'System' },
   { id: 'changelog',          label: 'ChangeLog',         icon: Sparkles,   group: 'System' },
+  { id: 'docs',               label: 'Admin Documentation', icon: BookMarked, group: 'System' },
 ]
 
 const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
@@ -54,6 +57,7 @@ const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
   system:             { title: 'System status',                  desc: 'Toggle each tracked service\'s status. Members see updates in real time (within ~30s).' },
   logbook:            { title: 'LogBook',                        desc: 'Every error and warning logged across the platform — push failures, sync issues, anything we surface.' },
   changelog:          { title: 'ChangeLog',                       desc: 'Release notes shown to all users in the sidebar. Drafts are hidden until published.' },
+  docs:               { title: 'Admin Documentation',            desc: 'Internal knowledge base. Markdown body — pasted code blocks (triple backticks) render automatically.' },
 }
 
 export default function SettingsPage() {
@@ -267,6 +271,9 @@ export default function SettingsPage() {
               <ChangeLogManager />
             </Card>
           )}
+
+          {/* ---------- Admin Documentation ---------- */}
+          {active === 'docs' && <AdminDocumentation />}
         </div>
       </div>
     </PageContainer>
