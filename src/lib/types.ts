@@ -501,6 +501,8 @@ export type NotificationKey =
   | 'user_lead_status'
   | 'user_payout'
   | 'user_lead_reminder'
+  | 'user_whats_new'
+  | 'user_broadcast'
 
 export interface NotificationKeyMeta {
   key: NotificationKey
@@ -521,6 +523,8 @@ export const NOTIFICATION_KEYS: NotificationKeyMeta[] = [
   { key: 'user_lead_status',      label: 'Lead status changes',    desc: 'When the status of your lead is updated.',   role: 'user'  },
   { key: 'user_payout',           label: 'Payout received',        desc: 'When one of your payouts is marked paid.',   role: 'user'  },
   { key: 'user_lead_reminder',    label: 'Lead reminders',         desc: 'Reminders you scheduled for your leads.',   role: 'user'  },
+  { key: 'user_whats_new',        label: "What's new posts",        desc: 'When an admin publishes a new release note.', role: 'user'  },
+  { key: 'user_broadcast',        label: 'Broadcast announcements', desc: 'Platform-wide announcements sent by admins.', role: 'user'  },
 ]
 
 export type NotificationTone = 'low' | 'normal' | 'high' | 'urgent'
@@ -574,9 +578,23 @@ export interface AdminDoc {
   updated_at: string
   title: string
   body: string
+  /** Long-form markdown where the admin describes HOW a given update
+   *  was built — the "Structure View" rendered in the read modal. */
+  structure: string
   category: string
   tags: string[]
   created_by: string | null
+}
+
+/** Code snippet attached to an Admin Doc entry.  One doc → many
+ *  snippets.  `language` is a free-form hint for syntax styling. */
+export interface AdminDocSnippet {
+  id: string
+  doc_id: string
+  title: string
+  language: string
+  code: string
+  created_at: string
 }
 export interface PushLogEntry {
   id: string

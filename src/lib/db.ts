@@ -7,7 +7,7 @@ import type {
   FinanceEntry, FinanceCategory, FinanceKind,
   ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
   MessagePriority, MessageFolder,
-  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel, LeadReminder, LeadStatus, AdminDoc,
+  NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel, LeadReminder, LeadStatus, AdminDoc, AdminDocSnippet,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -1179,17 +1179,18 @@ async deleteFinanceEntry(id: string): Promise<void> {
     return (data || []) as AdminDoc[]
   },
 
-  async createAdminDoc(entry: { title: string; body?: string; category?: string; tags?: string[] }): Promise<void> {
+  async createAdminDoc(entry: { title: string; body?: string; structure?: string; category?: string; tags?: string[] }): Promise<void> {
     const { error } = await supabase!.from('admin_docs').insert({
       title: entry.title,
       body: entry.body ?? '',
+      structure: entry.structure ?? '',
       category: entry.category ?? 'General',
       tags: entry.tags ?? [],
     })
     if (error) throw error
   },
 
-  async updateAdminDoc(id: string, patch: Partial<{ title: string; body: string; category: string; tags: string[] }>): Promise<void> {
+  async updateAdminDoc(id: string, patch: Partial<{ title: string; body: string; structure: string; category: string; tags: string[] }>): Promise<void> {
     const { error } = await supabase!.from('admin_docs')
       .update({ ...patch, updated_at: iso() }).eq('id', id)
     if (error) throw error
@@ -1198,5 +1199,63 @@ async deleteFinanceEntry(id: string): Promise<void> {
   async deleteAdminDoc(id: string): Promise<void> {
     const { error } = await supabase!.from('admin_docs').delete().eq('id', id)
     if (error) throw error
+  },
+
+  /* ---------- ADMIN DOC SNIPPETS (one doc → many code snippets) ---------- */
+  async listAdminDocSnippets(docId: string): Promise<AdminDocSnippet[]> {
+    const { data, error } = await supabase!.from('admin_doc_snippets')
+      .select('*').eq('doc_id', docId).order('created_at', { ascending: true })
+    if (error) throw error
+    return (data || []) as AdminDocSnippet[]
+  },
+
+  async createAdminDocSnippet(s: { doc_id: string; title?: string; language?: string; code: string }): Promise<void> {
+    const { error } = await supabase!.from('admin_doc_snippets').insert({
+      doc_id: s.doc_id,
+      title: s.title ?? '',
+      language: s.language ?? '',
+      code: s.code ?? '',
+    })
+    if (error) throw error
+  },
+
+  async updateAdminDocSnippet(id: string, patch: Partial<{ title: string; language: string; code: string }>): Promise<void> {
+    const { error } = await supabase!.from('admin_doc_snippets').update(patch).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteAdminDocSnippet(id: string): Promise<void> {
+    const { error } = await supabase!.from('admin_doc_snippets').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- BROADCAST ANNOUNCEMENT (admin → all active users) ----------
+   * Fan-out inserts one inbox_messages row per active user with
+   * notification_key='user_broadcast'.  The existing push pipeline then
+   * delivers a push to each user's subscribed devices, honouring their
+   * per-type preference (so users who opted out of 'user_broadcast'
+   * won't receive it).
+   */
+  async broadcastAnnouncement(opts: { title: string; body: string; action_url?: string; sender_id: string }): Promise<{ sent: number }> {
+    const { data: profiles, error: pErr } = await supabase!.from('profiles')
+      .select('id').eq('active', true)
+    if (pErr) throw pErr
+    const list = (profiles || []) as { id: string }[]
+    if (list.length === 0) return { sent: 0 }
+    const rows = list.map((p) => ({
+      id: uuid(),
+      recipient_id: p.id,
+      sender_id: opts.sender_id,
+      type: 'system' as never,
+      title: opts.title,
+      body: opts.body,
+      read: false,
+      action_url: opts.action_url || '/',
+      metadata: { kind: 'broadcast' },
+      notification_key: 'user_broadcast' as never,
+    }))
+    const { error } = await supabase!.from('inbox_messages').insert(rows as never)
+    if (error) throw error
+    return { sent: list.length }
   },
 }

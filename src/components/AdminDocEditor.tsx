@@ -29,6 +29,7 @@ export function AdminDocEditor({ open, onClose, onSaved, categories, editing }: 
   const { push } = useToast()
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [structure, setStructure] = useState('')
   const [category, setCategory] = useState('General')
   const [tagsInput, setTagsInput] = useState('')  // comma-separated
   const [mode, setMode] = useState<'write' | 'preview'>('write')
@@ -39,11 +40,13 @@ export function AdminDocEditor({ open, onClose, onSaved, categories, editing }: 
     if (editing) {
       setTitle(editing.title)
       setBody(editing.body)
+      setStructure(editing.structure ?? '')
       setCategory(editing.category)
       setTagsInput(editing.tags.join(', '))
     } else {
       setTitle('')
       setBody('')
+      setStructure('')
       setCategory(categories[0] ?? 'General')
       setTagsInput('')
     }
@@ -63,10 +66,10 @@ export function AdminDocEditor({ open, onClose, onSaved, categories, editing }: 
     setSaving(true)
     try {
       if (editing) {
-        await db.updateAdminDoc(editing.id, { title, body, category, tags })
+        await db.updateAdminDoc(editing.id, { title, body, structure, category, tags })
         push({ tone: 'success', title: 'Document updated' })
       } else {
-        await db.createAdminDoc({ title, body, category, tags })
+        await db.createAdminDoc({ title, body, structure, category, tags })
         push({ tone: 'success', title: 'Document created' })
       }
       onSaved()

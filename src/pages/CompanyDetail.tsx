@@ -146,12 +146,15 @@ export default function CompanyDetail() {
             </div>
           </div>
         )}
-        {/* Lead status — inline changer for owner/admin, badge for others */}
+        {/* Lead status — inline changer for owner/admin, badge for others.
+            size="md" lines the trigger up with the adjacent Edit / Remind
+            Me / New Offer buttons so they read as a single action bar. */}
         {company.lead_status && (
           <div className="flex items-center gap-2">
             <LeadStatusPicker
               status={company.lead_status as LeadStatus}
               canEdit={!!canEditCompany}
+              size="md"
               onChange={async (s) => {
                 try {
                   await db.updateLeadStatus(company.id, s)

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { MobileNav } from './MobileNav'
+import { NotificationPromptModal } from '../NotificationPromptModal'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -15,6 +16,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
       <MobileNav />
+      {/* First-login notification subscribe prompt — pops once per
+          device on a fresh sign-in so the user is asked to opt into
+          push. After they answer (or dismiss), it stays dismissed and
+          they manage push from Settings like before. */}
+      <NotificationPromptModal />
     </div>
   )
 }

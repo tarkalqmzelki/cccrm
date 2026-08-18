@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Search, Pencil, Trash2, FileText, Tag, BookOpen, X, ChevronRight, Copy, Calendar } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, FileText, Tag, BookOpen, X, ChevronRight, Copy, Calendar, Code2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useAsync } from '../lib/hooks/useAsync'
@@ -10,6 +10,8 @@ import { Input } from './ui/Input'
 import { Skeleton } from './ui/Skeleton'
 import { Modal } from './ui/Modal'
 import { AdminDocEditor } from './AdminDocEditor'
+import { AdminDocSnippets } from './AdminDocSnippets'
+import { StructureEditorButton, StructureView } from './AdminDocStructure'
 import type { AdminDoc } from '../lib/types'
 import { dateShort, dateLong } from '../lib/format'
 
@@ -212,6 +214,13 @@ export function AdminDocumentation() {
               </div>
               <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
+                  onClick={(e) => { e.stopPropagation(); setViewing(d) }}
+                  title="Add snippets / structure view"
+                  className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-600"
+                >
+                  <Code2 size={13} strokeWidth={1.75} />
+                </button>
+                <button
                   onClick={(e) => { e.stopPropagation(); startEdit(d) }}
                   title="Edit"
                   className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-600"
@@ -240,7 +249,7 @@ export function AdminDocumentation() {
         editing={editing}
       />
 
-      {/* Read modal — renders the markdown body */}
+      {/* Read modal — renders the markdown body, snippets, and structure view */}
       <Modal
         open={!!viewing}
         onClose={() => setViewing(null)}
@@ -262,16 +271,35 @@ export function AdminDocumentation() {
           <>
             <Button variant="secondary" onClick={() => setViewing(null)}>Close</Button>
             {viewing && (
-              <Button icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => startEdit(viewing)}>Edit</Button>
+              <>
+                <StructureEditorButton
+                  docId={viewing.id}
+                  structure={viewing.structure ?? ''}
+                  onSaved={reload}
+                />
+                <Button icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => startEdit(viewing)}>Edit</Button>
+              </>
             )}
           </>
         }
       >
-        <div className="md max-h-[65vh] overflow-y-auto">
-          {viewing?.body.trim() ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{viewing.body}</ReactMarkdown>
-          ) : (
-            <p className="text-sm text-ink-400">This document is empty.</p>
+        <div className="space-y-5">
+          <div className="md max-h-[55vh] overflow-y-auto">
+            {viewing?.body.trim() ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{viewing.body}</ReactMarkdown>
+            ) : (
+              <p className="text-sm text-ink-400">This document is empty.</p>
+            )}
+          </div>
+
+          {/* Structure view — how this update was built (markdown) */}
+          {viewing && (viewing.structure ?? '').trim() && (
+            <StructureView structure={viewing.structure} />
+          )}
+
+          {/* Snippets — code blocks attached to this doc */}
+          {viewing && (
+            <AdminDocSnippets docId={viewing.id} />
           )}
         </div>
       </Modal>

@@ -82,10 +82,32 @@ export function LeadReminderModal({ open, onClose, company }: Props) {
         title: 'Lead reminder',
         body,
       })
+      // Also create a calendar entry so the reminder shows up on the
+      // activities calendar alongside meetings/calls.  Type 'reminder'
+      // is the gray-dot kind — visible to the owner.
+      let calendarOk = true
+      try {
+        await db.createScheduledActivity({
+          owner_id: user.id,
+          type: 'reminder',
+          status: 'planned',
+          title: `Reminder: ${company.name}${reason.trim() ? ` — ${reason.trim()}` : ''}`,
+          notes: reason.trim(),
+          scheduled_at: remindAt,
+          duration_min: 15,
+          company_id: company.id,
+          visible_on_calendar: true,
+        })
+      } catch (calErr: any) {
+        // Don't fail the whole modal if the calendar write fails — the
+        // reminder itself is already saved and will fire a push.
+        calendarOk = false
+        console.warn('[lead-reminder] calendar entry failed:', calErr?.message)
+      }
       push({
         tone: 'success',
         title: 'Reminder scheduled',
-        desc: `You'll be notified on ${new Date(remindAt).toLocaleString()}.`,
+        desc: `You'll be notified on ${new Date(remindAt).toLocaleString()}${calendarOk ? ' — added to your calendar too' : ''}.`,
       })
       onClose()
       setPreset(1)
@@ -174,6 +196,8 @@ export function LeadReminderModal({ open, onClose, company }: Props) {
               Reminder will fire on{' '}
               <strong>{new Date(computeRemindAt()!).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</strong>.
               {reason.trim() && <> · Reason: <em>{reason.trim()}</em></>}
+              <br />
+              A matching calendar entry will be created so the reminder shows on your activities calendar.
               <br />
               Make sure push notifications are enabled on your phone to receive it.
             </span>

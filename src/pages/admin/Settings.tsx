@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { Card, CardHeader } from '../../components/ui/Card'
@@ -17,6 +17,7 @@ import { PushDeliveryLog } from '../../components/PushDeliveryLog'
 import { LogBook } from '../../components/LogBook'
 import { ChangeLogManager } from '../../components/ChangeLogManager'
 import { AdminDocumentation } from '../../components/AdminDocumentation'
+import { BroadcastManager } from '../../components/BroadcastManager'
 
 type Category =
   | 'commissions'
@@ -24,6 +25,7 @@ type Category =
   | 'notif-templates'
   | 'notif-log'
   | 'notif-errors'
+  | 'broadcast'
   | 'system'
   | 'logbook'
   | 'changelog'
@@ -40,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'commissions',       label: 'Commissions',       icon: Settings2,  group: 'Commissions' },
   { id: 'notif-preferences',  label: 'Your preferences',  icon: Bell,       group: 'Notifications' },
   { id: 'notif-templates',    label: 'Templates',         icon: Bell,       group: 'Notifications' },
+  { id: 'broadcast',          label: 'Broadcast',         icon: Megaphone,  group: 'Notifications' },
   { id: 'notif-log',          label: 'Delivery log',      icon: Bell,       group: 'Notifications' },
   { id: 'notif-errors',       label: 'Errors',            icon: Bell,       group: 'Notifications' },
   { id: 'system',             label: 'System status',     icon: Activity,   group: 'System' },
@@ -52,12 +55,13 @@ const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
   commissions:       { title: 'Commissions',                      desc: 'Configure level thresholds, commission rates, and referral bonuses.' },
   'notif-preferences': { title: 'Your notification preferences',  desc: 'Enable or disable each alert type for your own account.' },
   'notif-templates':   { title: 'Notification templates',         desc: 'Edit the title and body format applied to every push notification. Disabling a type here suppresses it for everyone.' },
+  broadcast:           { title: 'Broadcast announcement',         desc: 'Send a push notification to every active user. Toggle the channel on/off in Templates.' },
   'notif-log':         { title: 'Push delivery log',              desc: 'Successful push deliveries, written by the Edge Function.' },
   'notif-errors':      { title: 'Notification errors',            desc: 'Failed and skipped pushes. Empty after a test means the trigger can\'t reach the function — check app_secrets.' },
   system:             { title: 'System status',                  desc: 'Toggle each tracked service\'s status. Members see updates in real time (within ~30s).' },
   logbook:            { title: 'LogBook',                        desc: 'Every error and warning logged across the platform — push failures, sync issues, anything we surface.' },
-  changelog:          { title: 'ChangeLog',                       desc: 'Release notes shown to all users in the sidebar. Drafts are hidden until published.' },
-  docs:               { title: 'Admin Documentation',            desc: 'Internal knowledge base. Markdown body — pasted code blocks (triple backticks) render automatically.' },
+  changelog:          { title: 'ChangeLog',                       desc: 'Release notes shown to all users in the sidebar. Drafts are hidden until published. Publishing a new entry also fires a "What\'s new" push to every subscribed device.' },
+  docs:               { title: 'Admin Documentation',            desc: 'Internal knowledge base. Markdown body — pasted code blocks (triple backticks) render automatically. Add per-doc code snippets and a structure view.' },
 }
 
 export default function SettingsPage() {
@@ -245,6 +249,11 @@ export default function SettingsPage() {
               <CardHeader title="Notification errors" desc="Failed and skipped pushes. Empty after a test means the trigger can't reach the function — check app_secrets." />
               <PushDeliveryLog status="error" limit={50} />
             </Card>
+          )}
+
+          {/* ---------- Notifications: Broadcast ---------- */}
+          {active === 'broadcast' && (
+            <BroadcastManager />
           )}
 
           {/* ---------- System status ---------- */}

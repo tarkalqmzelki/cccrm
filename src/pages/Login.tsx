@@ -22,6 +22,9 @@ export default function Login() {
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // Default to ON — this is a PWA, the user wants to stay signed in
+  // on their phone rather than re-login every time they open the app.
+  const [remember, setRemember] = useState(true)
   const emailRef = useRef<HTMLInputElement>(null)
 
   /* Autofocus only on desktop — on mobile, auto-focusing pops the keyboard
@@ -37,7 +40,7 @@ export default function Login() {
     setErr(null)
     setBusy(true)
     try {
-      const u = await signIn(email, password)
+      const u = await signIn(email, password, remember)
       push({ tone: 'success', title: `Welcome back, ${u.full_name.split(' ')[0]}` })
       navigate(u.role === 'admin' ? '/' : '/deals')
     } catch (e: any) {
@@ -203,7 +206,16 @@ export default function Login() {
                 </div>
               </Field>
 
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm text-ink-600 select-none">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                    className="h-4 w-4 rounded border-line text-ink focus:ring-ink"
+                  />
+                  Remember me
+                </label>
                 <button
                   type="button"
                   onClick={handleForgot}

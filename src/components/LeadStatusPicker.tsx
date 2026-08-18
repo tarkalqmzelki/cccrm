@@ -7,6 +7,10 @@ interface Props {
   status: LeadStatus
   canEdit: boolean
   onChange: (status: LeadStatus) => void
+  /** Visual size of the trigger button. 'md' matches the platform
+   *  Button md size (h-11 px-4 text-sm rounded-xl) so it lines up
+   *  with adjacent Button components like Edit / Remind Me. */
+  size?: 'sm' | 'md'
 }
 
 /**
@@ -14,7 +18,7 @@ interface Props {
  * a small dropdown to pick a new status.  Read-only when canEdit is
  * false (just shows the badge).
  */
-export function LeadStatusPicker({ status, canEdit, onChange }: Props) {
+export function LeadStatusPicker({ status, canEdit, onChange, size = 'sm' }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const meta = LEAD_STATUS_META[status] ?? LEAD_STATUS_META.new
@@ -28,6 +32,11 @@ export function LeadStatusPicker({ status, canEdit, onChange }: Props) {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  const triggerCls =
+    size === 'md'
+      ? 'flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium text-ink transition-colors hover:border-ink-200 hover:bg-ink-50'
+      : 'flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-ink-50'
+
   if (!canEdit) {
     return <Badge tone={meta.tone}>{meta.label}</Badge>
   }
@@ -37,7 +46,7 @@ export function LeadStatusPicker({ status, canEdit, onChange }: Props) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-ink-50"
+        className={triggerCls}
       >
         <span className={`h-1.5 w-1.5 rounded-full ${TONE_DOT[meta.tone]}`} />
         {meta.label}

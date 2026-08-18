@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { LogOut, UserCog, ChevronDown, Inbox, KeyRound, Activity } from 'lucide-react'
+import { LogOut, UserCog, ChevronDown, Inbox, KeyRound, Activity, FolderCog } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { NAV } from './nav'
 import { Avatar } from '../ui/Avatar'
@@ -15,8 +15,14 @@ import { useSidebarBadges } from '../../lib/hooks/useSidebarBadges'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import type { SystemStatus } from '../../lib/types'
+import type { NavItem } from './nav'
 
 const BADGE = 'Live'
+
+/* Admin-only nav items that are grouped under "Management" on the
+ * phone sidebar (so the mobile drawer doesn't get too tall). On
+ * desktop they stay as separate top-level links. */
+const MANAGEMENT_PATHS = new Set(['/sellers', '/create-user', '/settings'])
 
 export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileOpen: (v: boolean) => void }) {
   const { user, signOut } = useAuth()
@@ -82,23 +88,16 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
               className="absolute inset-y-0 left-0 w-72 glass-strong flex flex-col px-3 py-5"
             >
               <Brand />
-              <nav className="mt-6 flex-1 space-y-0.5" onClick={() => setMobileOpen(false)}>
-                {items.map((n) => (
-                  <NavLink
-                    key={n.to}
-                    to={n.to}
-                    end={n.to === '/'}
-                    className={({ isActive }) =>
-                      `relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                        isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
-                      }`
-                    }
-                  >
-                    <n.icon size={18} strokeWidth={1.75} />
-                    {n.label}
-                    <NavBadge count={badgeFor(n.to)} light={false} />
-                  </NavLink>
-                ))}
+              {/* Scrollable nav — the Brand stays fixed at top, the
+                  ChangeLog / SystemStatus / UserCard stay fixed at
+                  bottom, only the nav itself scrolls. On admin, the
+                  three Management links collapse into a single
+                  expandable "Management" group to save vertical space. */}
+              <nav
+                className="mt-6 flex-1 space-y-0.5 overflow-y-auto pr-1 -mr-1"
+                onClick={() => setMobileOpen(false)}
+              >
+                <MobileNavList items={items} badgeFor={badgeFor} isAdmin={user.role === 'admin'} />
               </nav>
               <ChangeLogPill onClick={() => { setMobileOpen(false); setChangelogOpen(true) }} />
               <SystemStatusPill onClick={() => { setMobileOpen(false); setStatusOpen(true) }} />
@@ -147,6 +146,122 @@ function NavBadge({ count, light }: { count: number; light: boolean }) {
     >
       {count > 9 ? '9+' : count}
     </motion.span>
+  )
+}
+
+/**
+ * Mobile nav list.  For admins, the three "Management" links (Sellers,
+ * Create User, Settings) collapse into a single expandable row with a
+ * chevron — saves vertical space on phones so the rest of the nav and
+ * the fixed-bottom UserCard stay reachable.  Non-admins see a flat
+ * list (no grouping needed).
+ */
+function MobileNavList({
+  items,
+  badgeFor,
+  isAdmin,
+}: {
+  items: NavItem[]
+  badgeFor: (to: string) => number
+  isAdmin: boolean
+}) {
+  const [mgmtOpen, setMgmtOpen] = useState(false)
+  if (!isAdmin) {
+    return (
+      <>
+        {items.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            end={n.to === '/'}
+            className={({ isActive }) =>
+              `relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
+              }`
+            }
+          >
+            <n.icon size={18} strokeWidth={1.75} />
+            {n.label}
+            <NavBadge count={badgeFor(n.to)} light={false} />
+          </NavLink>
+        ))}
+      </>
+    )
+  }
+
+  const primary = items.filter((n) => !MANAGEMENT_PATHS.has(n.to))
+  const management = items.filter((n) => MANAGEMENT_PATHS.has(n.to))
+  const anyMgmtActive = management.some((n) => {
+    if (typeof window === 'undefined') return false
+    return window.location.pathname.startsWith(n.to)
+  })
+
+  return (
+    <>
+      {primary.map((n) => (
+        <NavLink
+          key={n.to}
+          to={n.to}
+          end={n.to === '/'}
+          className={({ isActive }) =>
+            `relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+              isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
+            }`
+          }
+        >
+          <n.icon size={18} strokeWidth={1.75} />
+          {n.label}
+          <NavBadge count={badgeFor(n.to)} light={false} />
+        </NavLink>
+      ))}
+
+      {/* Management group — collapsible */}
+      <div className="pt-1">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setMgmtOpen((v) => !v) }}
+          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+            anyMgmtActive || mgmtOpen ? 'bg-ink-50 text-ink' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
+          }`}
+        >
+          <FolderCog size={18} strokeWidth={1.75} />
+          Management
+          <motion.span animate={{ rotate: mgmtOpen ? 0 : -90 }} className="ml-auto text-ink-400">
+            <ChevronDown size={15} strokeWidth={1.75} />
+          </motion.span>
+        </button>
+        <AnimatePresence initial={false}>
+          {mgmtOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden pl-3"
+            >
+              <div className="mt-0.5 space-y-0.5 border-l border-line ml-[18px] pl-2">
+                {management.map((n) => (
+                  <NavLink
+                    key={n.to}
+                    to={n.to}
+                    end={n.to === '/'}
+                    className={({ isActive }) =>
+                      `relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                        isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
+                      }`
+                    }
+                  >
+                    <n.icon size={16} strokeWidth={1.75} />
+                    {n.label}
+                    <NavBadge count={badgeFor(n.to)} light={false} />
+                  </NavLink>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </>
   )
 }
 

@@ -202,9 +202,10 @@ export default function Leads() {
       </span>
     ) },
     { key: 'status', header: 'Lead Status', cell: (r) => {
-      const canEdit = user?.id === r.company.created_by || user?.role === 'admin'
+      // Placeholder only on the table — open the lead to change its
+      // status.  (See CompanyDetail.tsx for the inline changer.)
       const current = (r.company.lead_status ?? 'new') as LeadStatus
-      return <LeadStatusPicker status={current} canEdit={canEdit} onChange={(s) => changeLeadStatus(r.company.id, s)} />
+      return <LeadStatusPicker status={current} canEdit={false} onChange={() => {}} />
     } },
     { key: 'created', header: 'Created', align: 'right', sortable: true, cell: (r) => (
       <span className="text-2xs text-ink-400 num">{dateShort(r.company.created_at)}</span>

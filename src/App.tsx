@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useAuth } from './context/AuthContext'
 import { AppShell } from './components/layout/AppShell'
 import { ContextMenuHost } from './components/ui/ContextMenu'
+import { PortraitOnlyOverlay } from './components/PortraitOnlyOverlay'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Deals from './pages/Deals'
@@ -84,6 +85,9 @@ export default function App() {
         />
       </Routes>
       <ContextMenuHost />
+      {/* Phones should stay portrait — show a rotate-back overlay when
+          the user tilts into landscape on a phone-sized viewport. */}
+      <PortraitOnlyOverlay />
     </BrowserRouter>
   )
 }

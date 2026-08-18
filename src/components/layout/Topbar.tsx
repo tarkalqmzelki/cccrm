@@ -119,15 +119,15 @@ function NotificationBell({
     <div className="relative ml-auto">
       <button
         onClick={onToggle}
-        className="relative grid h-10 w-10 place-items-center rounded-xl text-ink hover:bg-ink-50 transition-colors"
+        className="relative grid h-10 w-10 place-items-center rounded-xl bg-ink-50 text-ink ring-1 ring-line transition-colors hover:bg-ink-100 hover:ring-ink-200 lg:h-12 lg:w-12"
         title="Notifications"
       >
-        <Bell size={18} strokeWidth={1.75} />
+        <Bell size={18} strokeWidth={1.75} className="lg:h-[22px] lg:w-[22px]" />
         {totalBadge > 0 && (
           <motion.span
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-neg px-1 text-2xs font-bold text-white"
+            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-neg px-1 text-2xs font-bold text-white ring-2 ring-surface"
           >
             {totalBadge > 9 ? '9+' : totalBadge}
           </motion.span>
