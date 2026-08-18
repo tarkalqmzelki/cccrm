@@ -196,16 +196,33 @@ export default function Payouts() {
 
       <Card>
         <CardHeader title="Payout history" action={<Button variant="secondary" size="sm" icon={<Download size={14} strokeWidth={1.75} />}>Export</Button>} />
-        <Table
-          columns={columns}
-          rows={sorted}
-          rowKey={(p) => p.id}
-          sort={sort}
-          onSortChange={toggle}
-          loading={loading}
-          onRowClick={(p) => p.deal_id && navigate(`/deals/${p.deal_id}`)}
-          empty={<div className="flex flex-col items-center gap-3 py-12"><Wallet size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No payouts yet</p></div>}
-        />
+        {/* Desktop: table */}
+        <div className="hidden lg:block">
+          <Table
+            columns={columns}
+            rows={sorted}
+            rowKey={(p) => p.id}
+            sort={sort}
+            onSortChange={toggle}
+            loading={loading}
+            onRowClick={(p) => p.deal_id && navigate(`/deals/${p.deal_id}`)}
+            empty={<div className="flex flex-col items-center gap-3 py-12"><Wallet size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No payouts yet</p></div>}
+          />
+        </div>
+
+        {/* Mobile: card list — no horizontal scroll */}
+        <div className="lg:hidden">
+          <MobilePayoutList
+            rows={sorted}
+            loading={loading}
+            map={map}
+            dealMap={dealMap}
+            isAdmin={isAdmin}
+            getCollectable={getCollectable}
+            onOpen={(p) => p.deal_id && navigate(`/deals/${p.deal_id}`)}
+            onPay={recordPayment}
+          />
+        </div>
       </Card>
 
       {/* Referral info modal */}
@@ -240,4 +257,116 @@ export default function Payouts() {
       </Modal>
     </PageContainer>
   )
+}
+
+/* ------------------------------------------------------------------ */
+/* Mobile card list — phone-only.                                    */
+/* ------------------------------------------------------------------ */
+function MobilePayoutList({
+  rows, loading, map, dealMap, isAdmin, getCollectable, onOpen, onPay,
+}: {
+  rows: Payout[]
+  loading: boolean
+  map: Record<string, Profile>
+  dealMap: Record<string, Deal>
+  isAdmin: boolean
+  getCollectable: (p: Payout) => number
+  onOpen: (p: Payout) => void
+  onPay: (id: string, amount: number) => void
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-2 py-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="skeleton h-28 w-full rounded-xl" />
+        ))}
+      </div>
+    )
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-12">
+        <Wallet size={20} strokeWidth={1.75} className="text-ink-300" />
+        <p className="text-sm text-ink-400">No payouts yet</p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1.5">
+      {rows.map((p) => {
+        const d = p.deal_id ? dealMap[p.deal_id] : null
+        const isReferral = p.payout_type === 'referral'
+        const collectable = getCollectable(p)
+        const paid = p.paid_amount || 0
+        const fullyPaid = paid >= p.amount
+        const partial = paid > 0 && !fullyPaid
+        const seller = map[p.seller_id]
+        const tone = fullyPaid ? 'pos' : partial ? 'warn' : collectable > 0 ? 'info' : 'neutral'
+        const label = fullyPaid ? 'Paid' : partial ? 'Partial' : collectable > 0 ? 'Collectable' : p.status
+        return (
+          <button
+            key={p.id}
+            onClick={() => onOpen(p)}
+            className="card w-full text-left active:scale-[0.99] transition-transform"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                {isReferral && <Network size={14} strokeWidth={1.75} className="shrink-0 text-ink-400" />}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink">{d?.company || '—'}</p>
+                  <p className="text-2xs text-ink-400">
+                    {isReferral ? 'Referral' : 'Sale'} · {dateShort(p.created_at)}
+                  </p>
+                </div>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${TONE_BADGE[tone]}`}>
+                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: TONE_DOT[tone] }} />
+                {label}
+              </span>
+            </div>
+
+            {isAdmin && seller && (
+              <div className="mt-2 flex items-center gap-1.5">
+                <Avatar name={seller.full_name} color={seller.avatar_color} url={seller.avatar_url} size={18} />
+                <span className="truncate text-2xs text-ink-500">{seller.full_name}</span>
+              </div>
+            )}
+
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <div>
+                <p className="num text-sm font-semibold text-ink">{eurFull(paid)} / {eurFull(p.amount)}</p>
+                <p className="text-2xs text-ink-400">{eurFull(collectable)} collectable</p>
+              </div>
+              {isAdmin && collectable > paid && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Check size={13} strokeWidth={1.75} />}
+                  onClick={(e) => { e.stopPropagation(); onPay(p.id, collectable - paid) }}
+                >
+                  Pay {eurFull(collectable - paid)}
+                </Button>
+              )}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const TONE_DOT: Record<string, string> = {
+  neutral: '#A3A3A3',
+  info: '#2563EB',
+  warn: '#D97706',
+  pos: '#16A34A',
+  neg: '#DC2626',
+}
+
+const TONE_BADGE: Record<string, string> = {
+  neutral: 'bg-ink-100 text-ink-600',
+  info: 'bg-infoBg text-info',
+  warn: 'bg-warnBg text-warn',
+  pos: 'bg-posBg text-pos',
+  neg: 'bg-negBg text-neg',
 }

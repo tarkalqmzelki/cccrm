@@ -197,6 +197,11 @@ Deno.serve(async (req) => {
     const meta = row.metadata ?? {}
     const vars: Record<string, string> = {
       subject: row.title ?? '',
+      // The {body} placeholder is used by the broadcast template (and is
+      // safe to expose to any other template that wants to inline the
+      // raw inbox_messages.body).  Without this, broadcast bodies came
+      // through empty because the placeholder resolved to "".
+      body: row.body ?? '',
       actor: (meta.actor_name as string) ?? 'Someone',
       amount: (meta.amount as string) ?? '',
       period: (meta.period as string) ?? '',

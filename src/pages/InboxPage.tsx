@@ -5,7 +5,7 @@ import {
   Inbox, Check, X, Bell, MessageSquare, ShieldCheck, CheckCheck, Mail,
   Trash2, Send, Users, MessagesSquare, Star, Reply, Forward, Archive,
   Pencil, Flag, Search, Send as SendIcon, Star as StarIcon,
-  Calendar as CalIcon, CornerUpLeft, CornerUpRight, MailOpen, FolderInput, AlertOctagon,
+  Calendar as CalIcon, CornerUpLeft, CornerUpRight, MailOpen, FolderInput, AlertOctagon, UsersRound,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useAsync } from '../lib/hooks/useAsync'
@@ -426,6 +426,7 @@ export default function InboxPage() {
         onClose={() => { setComposeOpen(false); setComposePre(null) }}
         profiles={data?.profiles || []}
         currentUserId={user.id}
+        isAdmin={user.role === 'admin'}
         prefill={composePre}
         onSent={() => { setComposeOpen(false); setComposePre(null); reloadAll() }}
       />
@@ -643,15 +644,16 @@ function MessageRow({
 }
 
 /* ------------------------------------------------------------------ */
-/* Compose modal                                                       */
+/* Compose modal — single recipient (everyone) or bulk (admin only)     */
 /* ------------------------------------------------------------------ */
 function ComposeModal({
-  open, onClose, profiles, currentUserId, prefill, onSent,
+  open, onClose, profiles, currentUserId, isAdmin, prefill, onSent,
 }: {
   open: boolean
   onClose: () => void
   profiles: Profile[]
   currentUserId: string
+  isAdmin: boolean
   prefill: ComposePrefill | null
   onSent: () => void
 }) {
@@ -665,9 +667,18 @@ function ComposeModal({
   const [sending, setSending] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
 
+  // Bulk mode — admins only.  When `bulk` is true we send the same
+  // message to every selected recipient via db.sendDirectMessageBulk.
+  const [bulk, setBulk] = useState(false)
+  const [bulkIds, setBulkIds] = useState<string[]>([])
+  const [bulkPickerOpen, setBulkPickerOpen] = useState(false)
+
   useEffect(() => {
     if (!open) return
     if (prefill) {
+      // Prefills only make sense in single-recipient mode (reply / forward)
+      setBulk(false)
+      setBulkIds([])
       setRecipientId(prefill.recipientId)
       setRecipientName(prefill.recipientName)
       setTitle(prefill.title)
@@ -676,27 +687,48 @@ function ComposeModal({
       setCategory(prefill.category)
     } else {
       setRecipientId(''); setRecipientName(undefined); setTitle(''); setBody(''); setPriority('normal'); setCategory('')
+      // Don't reset `bulk` here — let the admin keep their bulk setting
+      // across sends.  Bulk ids ARE cleared after a successful send.
     }
     setSending(false)
   }, [open, prefill])
 
-  const canSend = recipientId && body.trim().length > 0 && !sending
+  const canSend = bulk
+    ? bulkIds.length > 0 && body.trim().length > 0 && !sending
+    : !!recipientId && body.trim().length > 0 && !sending
 
   async function submit() {
     if (!canSend) return
     setSending(true)
     try {
-      await db.sendDirectMessage({
-        recipientId,
-        senderId: currentUserId,
-        title: title.trim(),
-        body: body.trim(),
-        priority,
-        category: category.trim(),
-        parentId: prefill?.parentId || null,
-        threadId: prefill?.threadId || null,
-      })
-      push({ tone: 'success', title: 'Message sent' })
+      if (bulk) {
+        const { sent } = await db.sendDirectMessageBulk({
+          recipientIds: bulkIds,
+          senderId: currentUserId,
+          title: title.trim(),
+          body: body.trim(),
+          priority,
+          category: category.trim(),
+        })
+        push({
+          tone: 'success',
+          title: 'Bulk message sent',
+          desc: `Delivered to ${sent} recipient${sent === 1 ? '' : 's'}.`,
+        })
+        setBulkIds([])
+      } else {
+        await db.sendDirectMessage({
+          recipientId,
+          senderId: currentUserId,
+          title: title.trim(),
+          body: body.trim(),
+          priority,
+          category: category.trim(),
+          parentId: prefill?.parentId || null,
+          threadId: prefill?.threadId || null,
+        })
+        push({ tone: 'success', title: 'Message sent' })
+      }
       onSent()
     } catch (e: any) {
       push({ tone: 'error', title: 'Could not send', desc: e?.message })
@@ -706,6 +738,9 @@ function ComposeModal({
   }
 
   const recipientProfile = profiles.find((p) => p.id === recipientId)
+  // Exclude the current user from bulk recipients — you can't bulk-send
+  // to yourself.
+  const bulkEntities = profileEntities(profiles, currentUserId)
 
   return (
     <Modal
@@ -713,39 +748,99 @@ function ComposeModal({
       onClose={onClose}
       title={
         <div className="flex items-center gap-2 pr-6">
-          <Send size={16} strokeWidth={1.75} className="text-info" />
-          {prefill?.parentId ? 'Reply / Forward' : 'New message'}
+          {bulk ? <UsersRound size={16} strokeWidth={1.75} className="text-info" /> : <Send size={16} strokeWidth={1.75} className="text-info" />}
+          {prefill?.parentId
+            ? (bulk ? 'Bulk message' : 'Reply / Forward')
+            : bulk ? 'Bulk message' : 'New message'}
         </div>
       }
-      desc="Send an email-like message to another member. They'll see it in their inbox with your chosen priority and category."
+      desc={
+        bulk
+          ? 'Send the same message to multiple recipients at once. Each recipient gets their own copy and a separate push notification.'
+          : 'Send an email-like message to another member. They\'ll see it in their inbox with your chosen priority and category.'
+      }
       size="md"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button icon={<Send size={14} strokeWidth={1.75} />} disabled={!canSend} onClick={submit}>
-            {sending ? 'Sending…' : 'Send'}
+            {sending ? 'Sending…' : bulk ? `Send to ${bulkIds.length || '—'}` : 'Send'}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="To" required>
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="flex h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-ink-200 focus:outline-none focus:border-ink"
-          >
-            {recipientProfile ? (
-              <>
-                <Avatar name={recipientProfile.full_name} color={recipientProfile.avatar_color} url={recipientProfile.avatar_url} size={22} />
-                <span className="flex-1 text-left truncate">{recipientProfile.full_name}</span>
-                <span className="text-2xs text-ink-400 capitalize">{recipientProfile.role}</span>
-              </>
-            ) : (
-              <span className="flex-1 text-left text-ink-400">Select a recipient…</span>
-            )}
-          </button>
-        </Field>
+        {/* Bulk toggle — admins only */}
+        {isAdmin && !prefill?.parentId && (
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-ink-50/60 px-3 py-2">
+            <UsersRound size={14} strokeWidth={1.75} className="text-ink-600" />
+            <p className="flex-1 text-2xs text-ink-600">
+              {bulk ? 'Bulk mode — message many recipients at once.' : 'Single recipient mode.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setBulk((v) => !v); setBulkIds([]); setRecipientId(''); setRecipientName(undefined) }}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${bulk ? 'bg-ink' : 'bg-ink-200'}`}
+              aria-label="Toggle bulk mode"
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${bulk ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+        )}
+
+        {/* Recipient picker — different UI per mode */}
+        {bulk ? (
+          <Field label="Recipients" required hint={`${bulkIds.length} selected`}>
+            <button
+              type="button"
+              onClick={() => setBulkPickerOpen(true)}
+              className="flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-ink-200 focus:outline-none focus:border-ink"
+            >
+              {bulkIds.length === 0 ? (
+                <span className="flex-1 text-left text-ink-400">Select recipients…</span>
+              ) : (
+                <div className="flex flex-1 flex-wrap items-center gap-1.5">
+                  {bulkIds.slice(0, 4).map((id) => {
+                    const p = profiles.find((x) => x.id === id)
+                    return (
+                      <span key={id} className="inline-flex items-center gap-1 rounded-full bg-ink-50 px-2 py-0.5 text-2xs font-medium text-ink-600">
+                        <Avatar name={p?.full_name || '?'} color={p?.avatar_color} url={p?.avatar_url} size={14} />
+                        {p?.full_name || 'Unknown'}
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setBulkIds((cur) => cur.filter((x) => x !== id)) }}
+                          className="text-ink-300 hover:text-neg"
+                        >
+                          <X size={10} strokeWidth={2} />
+                        </button>
+                      </span>
+                    )
+                  })}
+                  {bulkIds.length > 4 && <span className="text-2xs text-ink-400">+{bulkIds.length - 4} more</span>}
+                </div>
+              )}
+              <UsersRound size={15} strokeWidth={1.75} className="text-ink-400" />
+            </button>
+          </Field>
+        ) : (
+          <Field label="To" required>
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="flex h-11 w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-ink-200 focus:outline-none focus:border-ink"
+            >
+              {recipientProfile ? (
+                <>
+                  <Avatar name={recipientProfile.full_name} color={recipientProfile.avatar_color} url={recipientProfile.avatar_url} size={22} />
+                  <span className="flex-1 text-left truncate">{recipientProfile.full_name}</span>
+                  <span className="text-2xs text-ink-400 capitalize">{recipientProfile.role}</span>
+                </>
+              ) : (
+                <span className="flex-1 text-left text-ink-400">Select a recipient…</span>
+              )}
+            </button>
+          </Field>
+        )}
 
         <Field label="Subject">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What is this about?" />
@@ -782,6 +877,7 @@ function ComposeModal({
         </Field>
       </div>
 
+      {/* Single-recipient picker */}
       <EntityPickerModal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -794,6 +890,18 @@ function ComposeModal({
           const p = profiles.find((x) => x.id === id)
           setRecipientName(p?.full_name)
         }}
+      />
+
+      {/* Multi-recipient picker — admins only */}
+      <EntityPickerModal
+        open={bulkPickerOpen}
+        onClose={() => setBulkPickerOpen(false)}
+        title="Select recipients"
+        desc="Tap each member to add them. Search by name, role, or phone."
+        entities={bulkEntities}
+        multi
+        selectedIds={bulkIds}
+        onSelectIds={setBulkIds}
       />
     </Modal>
   )
@@ -996,9 +1104,17 @@ function MessageDetailModal({
           </div>
         )}
 
-        {/* Body */}
-        <div>
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-700">{m.body || '(empty message)'}</p>
+        {/* Body — rendered in its own box so it reads like an email:
+            the metadata header above, the body in a bordered
+            container below, action button below that. */}
+        <div className="rounded-xl border border-line bg-surface px-4 py-4 sm:px-5 sm:py-5">
+          <div className="mb-2 flex items-center gap-1.5 text-2xs font-medium uppercase tracking-wide text-ink-400">
+            <MailOpen size={11} strokeWidth={1.75} />
+            Message
+          </div>
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-700">
+            {m.body || '(empty message)'}
+          </p>
         </div>
 
         {/* Action button (system notifications) */}

@@ -87,6 +87,9 @@ export default function Referrals() {
         {isAdmin && <Button icon={<Plus size={16} strokeWidth={1.75} />} onClick={() => setAddOpen(true)}>Add referral</Button>}
       </div>
 
+      {/* Desktop: 2-column grid (list + network).  Mobile: single
+          column, list first, network second — each card is laid out
+          so the avatars + text never overflow horizontally. */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title={isAdmin ? 'Referral list' : 'Your referrals'} desc={`${visibleReferrals.length} ${visibleReferrals.length === 1 ? 'connection' : 'connections'}`} />
@@ -101,16 +104,22 @@ export default function Referrals() {
                 if (!a || !b) return null
                 const canRemove = isAdmin || (user?.id === r.referrer_id)
                 return (
-                  <div key={r.id} onContextMenu={(e) => canRemove && openContextMenu(e, ctxItems(r))} className="flex items-center gap-3 py-3 hover:bg-ink-50 -mx-2 px-2 rounded-lg transition-colors">
-                    <Avatar name={a.full_name} color={a.avatar_color} size={32} />
-                    <span className="truncate text-sm font-medium">{a.full_name}</span>
-                    <ArrowRight size={15} strokeWidth={1.75} className="shrink-0 text-ink-300" />
-                    <Avatar name={b.full_name} color={b.avatar_color} size={32} />
+                  <div
+                    key={r.id}
+                    onContextMenu={(e) => canRemove && openContextMenu(e, ctxItems(r))}
+                    className="flex items-center gap-2 py-3 hover:bg-ink-50 -mx-2 px-2 rounded-lg transition-colors"
+                  >
+                    <Avatar name={a.full_name} color={a.avatar_color} url={a.avatar_url} size={28} />
+                    <span className="hidden min-w-0 flex-shrink truncate text-sm font-medium sm:inline">{a.full_name}</span>
+                    <ArrowRight size={14} strokeWidth={1.75} className="shrink-0 text-ink-300" />
+                    <Avatar name={b.full_name} color={b.avatar_color} url={b.avatar_url} size={28} />
                     <div className="min-w-0 flex-1">
-                      <span className="truncate text-sm font-medium">{b.full_name}</span>
+                      <span className="block truncate text-sm font-medium">{b.full_name}</span>
+                      {/* On phone show both names stacked so nothing gets pushed right */}
+                      <span className="block truncate text-2xs text-ink-400 sm:hidden">from {a.full_name}</span>
                       {r.note && <p className="truncate text-2xs text-ink-400">{r.note}</p>}
                     </div>
-                    <span className="text-2xs text-ink-400">{dateLong(r.created_at)}</span>
+                    <span className="shrink-0 text-2xs text-ink-400">{dateLong(r.created_at)}</span>
                   </div>
                 )
               })}
@@ -129,7 +138,7 @@ export default function Referrals() {
               {tree.map((n) => (
                 <div key={n.profile.id} className="rounded-xl border border-line p-3">
                   <div className="flex items-center gap-2.5">
-                    <Avatar name={n.profile.full_name} color={n.profile.avatar_color} size={32} />
+                    <Avatar name={n.profile.full_name} color={n.profile.avatar_color} url={n.profile.avatar_url} size={32} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{n.profile.full_name}</p>
                       <p className="text-2xs text-ink-400 capitalize">{n.profile.level}</p>
@@ -139,7 +148,7 @@ export default function Referrals() {
                   <div className="mt-2 ml-9 space-y-1.5 border-l border-line pl-3">
                     {n.referees.map((r) => (
                       <div key={r.id} className="flex items-center gap-2">
-                        <Avatar name={r.full_name} color={r.avatar_color} size={22} />
+                        <Avatar name={r.full_name} color={r.avatar_color} url={r.avatar_url} size={22} />
                         <span className="truncate text-sm text-ink-600">{r.full_name}</span>
                       </div>
                     ))}

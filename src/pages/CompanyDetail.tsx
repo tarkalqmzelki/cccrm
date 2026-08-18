@@ -120,37 +120,53 @@ export default function CompanyDetail() {
         <ArrowLeft size={15} strokeWidth={1.75} /> Leads
       </button>
 
-      <div className="flex items-start gap-4">
-        {company.logo_url ? (
-          <img src={company.logo_url} alt={company.name} className="h-14 w-14 rounded-2xl object-cover" />
-        ) : (
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-ink text-white">
-            <Building2 size={26} strokeWidth={1.75} />
-          </div>
-        )}
-        <div className="flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{company.name}</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-ink-400">
-            {company.website && <span className="flex items-center gap-1"><Globe size={13} strokeWidth={1.75} /> {company.website}</span>}
-            {company.industry && <span className="flex items-center gap-1"><Briefcase size={13} strokeWidth={1.75} /> {company.industry}</span>}
-            {company.address && <span className="flex items-center gap-1"><MapPin size={13} strokeWidth={1.75} /> {company.address}</span>}
-          </div>
-        </div>
-        {/* Lead owner bubble */}
-        {company.created_by && profileMap[company.created_by] && (
-          <div className="flex items-center gap-2.5 rounded-xl border border-line px-3 py-2">
-            <Avatar name={profileMap[company.created_by].full_name} color={profileMap[company.created_by].avatar_color} url={profileMap[company.created_by].avatar_url} size={32} />
-            <div className="leading-tight">
-              <p className="text-2xs text-ink-400">Lead Owner</p>
-              <p className="text-sm font-medium">{profileMap[company.created_by].full_name}</p>
+      {/* Header — desktop: single horizontal row.  Mobile: stacked
+          blocks so title/icons/buttons/owner never get pushed right
+          or overflow.  The lead icon uses h-12 w-12 (smaller than the
+          desktop h-14 w-14) so it doesn't get smashed against the
+          title on a narrow screen. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-4">
+        {/* Title + meta row */}
+        <div className="flex min-w-0 items-start gap-3 lg:gap-4">
+          {company.logo_url ? (
+            <img src={company.logo_url} alt={company.name} className="h-12 w-12 shrink-0 rounded-2xl object-cover sm:h-14 sm:w-14" />
+          ) : (
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-ink text-white sm:h-14 sm:w-14">
+              <Building2 size={22} strokeWidth={1.75} />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{company.name}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-400 sm:text-sm">
+              {company.website && <span className="flex items-center gap-1"><Globe size={13} strokeWidth={1.75} /> {company.website}</span>}
+              {company.industry && <span className="flex items-center gap-1"><Briefcase size={13} strokeWidth={1.75} /> {company.industry}</span>}
+              {company.address && <span className="flex items-center gap-1"><MapPin size={13} strokeWidth={1.75} /> {company.address}</span>}
             </div>
           </div>
-        )}
-        {/* Lead status — inline changer for owner/admin, badge for others.
-            size="md" lines the trigger up with the adjacent Edit / Remind
-            Me / New Offer buttons so they read as a single action bar. */}
-        {company.lead_status && (
-          <div className="flex items-center gap-2">
+        </div>
+
+        {/* Spacer that pushes the right-side cluster to the right on desktop */}
+        <div className="hidden lg:block lg:flex-1" />
+
+        {/* Right cluster — owner bubble + status + action buttons.
+            On mobile, wraps below the title as a single block so
+            nothing gets pushed off the right edge of the screen. */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* Lead owner bubble */}
+          {company.created_by && profileMap[company.created_by] && (
+            <div className="flex items-center gap-2.5 rounded-xl border border-line px-3 py-2">
+              <Avatar name={profileMap[company.created_by].full_name} color={profileMap[company.created_by].avatar_color} url={profileMap[company.created_by].avatar_url} size={28} />
+              <div className="leading-tight">
+                <p className="text-2xs text-ink-400">Lead Owner</p>
+                <p className="truncate text-sm font-medium">{profileMap[company.created_by].full_name}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Lead status — inline changer for owner/admin, badge for others.
+              size="md" lines the trigger up with the adjacent Edit / Remind
+              Me / New Offer buttons so they read as a single action bar. */}
+          {company.lead_status && (
             <LeadStatusPicker
               status={company.lead_status as LeadStatus}
               canEdit={!!canEditCompany}
@@ -165,18 +181,19 @@ export default function CompanyDetail() {
                 }
               }}
             />
-          </div>
-        )}
-        {canEditCompany && (
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
+          )}
+
+          {canEditCompany && (
+            <>
+              <Button variant="secondary" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
+              <Button variant="secondary" icon={<Bell size={15} strokeWidth={1.75} />} onClick={() => setReminderOpen(true)}>Remind Me</Button>
+              {canAddOffer && <Button variant="secondary" icon={<Plus size={15} strokeWidth={1.75} />} onClick={() => setCreateOppOpen(true)}>New Offer</Button>}
+            </>
+          )}
+          {!canEditCompany && user && (
             <Button variant="secondary" icon={<Bell size={15} strokeWidth={1.75} />} onClick={() => setReminderOpen(true)}>Remind Me</Button>
-            {canAddOffer && <Button variant="secondary" icon={<Plus size={15} strokeWidth={1.75} />} onClick={() => setCreateOppOpen(true)}>New Offer</Button>}
-          </div>
-        )}
-        {!canEditCompany && user && (
-          <Button variant="secondary" icon={<Bell size={15} strokeWidth={1.75} />} onClick={() => setReminderOpen(true)}>Remind Me</Button>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

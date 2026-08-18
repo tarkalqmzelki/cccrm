@@ -710,6 +710,42 @@ export const db = {
     return id
   },
 
+  /* Bulk send the same direct message to many recipients at once.
+   * Used by admins for mass-messaging members. Returns the count of
+   * messages actually inserted (each recipient gets its own row, so
+   * the existing push trigger fires per-recipient and each user's
+   * per-type preference is honoured individually). */
+  async sendDirectMessageBulk(opts: {
+    recipientIds: string[]
+    senderId: string
+    title: string
+    body: string
+    priority?: MessagePriority
+    category?: string
+  }): Promise<{ sent: number }> {
+    if (opts.recipientIds.length === 0) return { sent: 0 }
+    const rows = opts.recipientIds.map((rid) => ({
+      id: uuid(),
+      recipient_id: rid,
+      sender_id: opts.senderId,
+      type: 'direct_message' as never,
+      title: opts.title || '',
+      body: opts.body || '',
+      read: false,
+      action_url: '/inbox',
+      metadata: { kind: 'direct_message', bulk: true } as Record<string, unknown>,
+      priority: opts.priority || 'normal',
+      category: opts.category || '',
+      is_starred: false,
+      folder: 'inbox',
+      thread_id: null as string | null,
+      parent_id: null as string | null,
+    }))
+    const { error } = await supabase!.from('inbox_messages').insert(rows as never)
+    if (error) throw error
+    return { sent: rows.length }
+  },
+
   /* List messages I sent to other members (Sent view) */
   async listInboxSent(senderId: string): Promise<InboxMessage[]> {
     const { data, error } = await supabase!

@@ -168,20 +168,122 @@ export default function Deals() {
           />
         </div>
 
-        <Table
-          columns={columns}
-          rows={sorted}
-          rowKey={(d) => d.id}
-          sort={sort}
-          onSortChange={toggle}
-          loading={loading}
-          onRowClick={(d) => navigate(`/deals/${d.id}`)}
-          onRowContext={(e, d) => openContextMenu(e, ctxItems(d))}
-          empty={<div className="flex flex-col items-center gap-3 py-12"><FileText size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No deals match your filters</p></div>}
-        />
+        {/* Desktop: full table */}
+        <div className="hidden lg:block">
+          <Table
+            columns={columns}
+            rows={sorted}
+            rowKey={(d) => d.id}
+            sort={sort}
+            onSortChange={toggle}
+            loading={loading}
+            onRowClick={(d) => navigate(`/deals/${d.id}`)}
+            onRowContext={(e, d) => openContextMenu(e, ctxItems(d))}
+            empty={<div className="flex flex-col items-center gap-3 py-12"><FileText size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No deals match your filters</p></div>}
+          />
+        </div>
+
+        {/* Mobile: card list */}
+        <div className="lg:hidden">
+          <MobileDealList
+            rows={sorted}
+            loading={loading}
+            profileMap={profileMap}
+            isAdmin={isAdmin}
+            onOpen={(d) => navigate(`/deals/${d.id}`)}
+            onContext={(e, d) => openContextMenu(e, ctxItems(d))}
+          />
+        </div>
       </Card>
 
       <DealModal open={createOpen} onClose={() => setCreateOpen(false)} onSaved={() => { setCreateOpen(false); reload() }} />
     </PageContainer>
   )
+}
+
+/* ------------------------------------------------------------------ */
+/* Mobile card list — phone-only, replaces the horizontally-scrolling
+/* deals table with tappable cards.                                  */
+/* ------------------------------------------------------------------ */
+function MobileDealList({
+  rows, loading, profileMap, isAdmin, onOpen, onContext,
+}: {
+  rows: Deal[]
+  loading: boolean
+  profileMap: Record<string, Profile>
+  isAdmin: boolean
+  onOpen: (d: Deal) => void
+  onContext: (e: React.MouseEvent, d: Deal) => void
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-2 py-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="skeleton h-24 w-full rounded-xl" />
+        ))}
+      </div>
+    )
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-12">
+        <FileText size={20} strokeWidth={1.75} className="text-ink-300" />
+        <p className="text-sm text-ink-400">No deals match your filters</p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1.5">
+      {rows.map((d) => {
+        const m = STATUS_META[d.status]
+        const seller = profileMap[d.seller_id]
+        return (
+          <button
+            key={d.id}
+            onClick={() => onOpen(d)}
+            onContextMenu={(e) => onContext(e, d)}
+            className="card w-full text-left active:scale-[0.99] transition-transform"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-ink">{d.company || 'Untitled'}</p>
+                <p className="truncate text-2xs text-ink-400">{d.contact_name || 'No contact'}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${TONE_BADGE[m.tone]}`}>
+                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: TONE_DOT_COLOR[m.tone] }} />
+                {m.label}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              {isAdmin && seller ? (
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Avatar name={seller.full_name} color={seller.avatar_color} url={seller.avatar_url} size={20} />
+                  <span className="truncate text-2xs text-ink-500">{seller.full_name}</span>
+                </div>
+              ) : (
+                <span className="text-2xs text-ink-400">{dateShort(d.created_at)}</span>
+              )}
+              <span className="num shrink-0 text-sm font-semibold text-ink">{eur(d.gross_value)}</span>
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const TONE_DOT_COLOR: Record<string, string> = {
+  neutral: '#A3A3A3',
+  info: '#2563EB',
+  warn: '#D97706',
+  pos: '#16A34A',
+  neg: '#DC2626',
+}
+
+const TONE_BADGE: Record<string, string> = {
+  neutral: 'bg-ink-100 text-ink-600',
+  info: 'bg-infoBg text-info',
+  warn: 'bg-warnBg text-warn',
+  pos: 'bg-posBg text-pos',
+  neg: 'bg-negBg text-neg',
 }

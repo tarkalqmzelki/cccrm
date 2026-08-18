@@ -38,7 +38,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
   return (
     <>
       <header
-        className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-surface/80 px-4 backdrop-blur-md lg:pl-8"
+        className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-line bg-surface/80 px-4 backdrop-blur-md sm:gap-3 lg:pl-8"
         style={{ paddingTop: 'var(--safe-top)' }}
       >
         <button onClick={onMenu} className="lg:hidden -ml-1 p-2 text-ink hover:bg-ink-50 rounded-lg transition-colors">
@@ -46,9 +46,9 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
         </button>
 
         {/* Title — hidden on desktop once search takes the middle */}
-        <h1 className="text-base font-semibold lg:hidden">{title}</h1>
+        <h1 className="flex-1 truncate text-base font-semibold lg:hidden">{title}</h1>
 
-        {/* Center search trigger */}
+        {/* Center search trigger — desktop only */}
         <button
           onClick={() => setPaletteOpen(true)}
           className="hidden lg:flex ml-auto mr-auto w-full max-w-md items-center gap-2.5 rounded-xl border border-line bg-ink-50/60 px-3 h-10 text-ink-400 hover:bg-ink-50 transition-colors"
@@ -60,13 +60,27 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
           </kbd>
         </button>
 
-        {/* Right: notifications */}
-        <NotificationBell
-          open={bellOpen}
-          onToggle={() => setBellOpen((o) => !o)}
-          onClose={() => setBellOpen(false)}
-          onJump={(href) => { setBellOpen(false); navigate(href) }}
-        />
+        {/* Right cluster: mobile search + notifications bell.
+            Both rendered as solid filled chips so they read as
+            buttons against the sticky header's translucent backdrop. */}
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2 lg:ml-0">
+          {/* Mobile search — opens the same CommandPalette as desktop */}
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="grid h-10 w-10 place-items-center rounded-xl bg-surface text-ink ring-1 ring-line shadow-sm transition-colors hover:bg-ink-50 hover:ring-ink-200 lg:hidden"
+            title="Search"
+            aria-label="Search"
+          >
+            <Search size={18} strokeWidth={1.75} />
+          </button>
+
+          <NotificationBell
+            open={bellOpen}
+            onToggle={() => setBellOpen((o) => !o)}
+            onClose={() => setBellOpen(false)}
+            onJump={(href) => { setBellOpen(false); navigate(href) }}
+          />
+        </div>
       </header>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
@@ -116,10 +130,10 @@ function NotificationBell({
   const totalBadge = unread.length + (user?.role === 'admin' ? pendingDeals.length : 0) + pendingIncomingReqs.length
 
   return (
-    <div className="relative ml-auto">
+    <div className="relative">
       <button
         onClick={onToggle}
-        className="relative grid h-10 w-10 place-items-center rounded-xl bg-ink-50 text-ink ring-1 ring-line transition-colors hover:bg-ink-100 hover:ring-ink-200 lg:h-12 lg:w-12"
+        className="relative grid h-10 w-10 place-items-center rounded-xl bg-surface text-ink ring-1 ring-line shadow-sm transition-colors hover:bg-ink-50 hover:ring-ink-200 lg:h-12 lg:w-12"
         title="Notifications"
       >
         <Bell size={18} strokeWidth={1.75} className="lg:h-[22px] lg:w-[22px]" />

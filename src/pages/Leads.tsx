@@ -232,82 +232,104 @@ export default function Leads() {
       </div>
 
       <Card>
-        {/* Filter row: search + scope toggle + dropdowns */}
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {/* Search */}
+        {/* Filter row: search + scope toggle + dropdowns.
+            On mobile, the filters go side-by-side in a horizontally
+            scrollable strip so they don't stack and push the table
+            down — keeps the immersive single-screen feel.  The search
+            input gets its own row on phone because it needs width. */}
+        <div className="mb-3 flex flex-col gap-2">
+          {/* Search — own row on phone, inline on desktop */}
           <div className="relative w-full sm:w-64 sm:max-w-xs">
             <Search size={16} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search companies…" className="pl-9 h-10" />
           </div>
 
-          {/* My vs All toggle */}
-          <div className="flex rounded-xl border border-line bg-surface p-0.5">
-            <button
-              onClick={() => setScope('all')}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                scope === 'all' ? 'bg-ink text-white' : 'text-ink-500 hover:text-ink'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setScope('mine')}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                scope === 'mine' ? 'bg-ink text-white' : 'text-ink-500 hover:text-ink'
-              }`}
-            >
-              My leads
-            </button>
+          {/* Filter strip — wraps on desktop, horizontal scroll on phone */}
+          <div className="flex items-center gap-2 overflow-x-auto sm:overflow-visible sm:flex-wrap -mx-1 px-1 sm:mx-0 sm:px-0 pb-1 sm:pb-0">
+            {/* My vs All toggle */}
+            <div className="flex shrink-0 rounded-xl border border-line bg-surface p-0.5">
+              <button
+                onClick={() => setScope('all')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  scope === 'all' ? 'bg-ink text-white' : 'text-ink-500 hover:text-ink'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setScope('mine')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  scope === 'mine' ? 'bg-ink text-white' : 'text-ink-500 hover:text-ink'
+                }`}
+              >
+                My leads
+              </button>
+            </div>
+
+            {/* Time filter */}
+            <FilterDropdown
+              value={timeFilter}
+              onChange={(v) => setTimeFilter(v as TimeFilter)}
+              options={TIME_FILTERS.map((t) => ({ value: t.value, label: t.label }))}
+              className="w-36 shrink-0"
+            />
+
+            {/* Status filter */}
+            <FilterDropdown
+              value={statusFilter}
+              onChange={(v) => setStatusFilter(v as 'all' | LeadStatus)}
+              options={[
+                { value: 'all', label: 'All statuses' },
+                ...LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_META[s].label })),
+              ]}
+              className="w-36 shrink-0"
+            />
+
+            {/* Owner filter */}
+            <FilterDropdown
+              value={ownerFilter}
+              onChange={(v) => setOwnerFilter(v)}
+              options={[
+                { value: 'all', label: 'All owners' },
+                ...ownerOptions.map((o) => ({ value: o.value, label: o.label })),
+              ]}
+              className="w-40 shrink-0"
+            />
+
+            {hasActiveFilters && (
+              <button onClick={clearFilters} className="flex shrink-0 items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-2xs font-medium text-ink-500 hover:bg-ink-50">
+                <X size={13} strokeWidth={1.75} /> Clear
+              </button>
+            )}
           </div>
-
-          {/* Time filter */}
-          <FilterDropdown
-            value={timeFilter}
-            onChange={(v) => setTimeFilter(v as TimeFilter)}
-            options={TIME_FILTERS.map((t) => ({ value: t.value, label: t.label }))}
-            className="w-36"
-          />
-
-          {/* Status filter */}
-          <FilterDropdown
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v as 'all' | LeadStatus)}
-            options={[
-              { value: 'all', label: 'All statuses' },
-              ...LEAD_STATUSES.map((s) => ({ value: s, label: LEAD_STATUS_META[s].label })),
-            ]}
-            className="w-36"
-          />
-
-          {/* Owner filter */}
-          <FilterDropdown
-            value={ownerFilter}
-            onChange={(v) => setOwnerFilter(v)}
-            options={[
-              { value: 'all', label: 'All owners' },
-              ...ownerOptions.map((o) => ({ value: o.value, label: o.label })),
-            ]}
-            className="w-40"
-          />
-
-          {hasActiveFilters && (
-            <button onClick={clearFilters} className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-2xs font-medium text-ink-500 hover:bg-ink-50">
-              <X size={13} strokeWidth={1.75} /> Clear
-            </button>
-          )}
         </div>
 
-        <Table
-          columns={columns}
-          rows={sorted}
-          rowKey={(r) => r.company.id}
-          sort={sort}
-          onSortChange={toggle}
-          loading={loading}
-          onRowClick={(r) => navigate(`/leads/${r.company.id}`)}
-          onRowContext={(e, r) => openContextMenu(e, ctxItems(r))}
-          empty={<div className="flex flex-col items-center gap-3 py-12"><Building2 size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No leads match your filters — try clearing them or create a new lead</p></div>}
-        />
+        {/* Desktop: full table with horizontal scroll for narrow columns.
+            Mobile: card list — no horizontal scrolling, each lead is a
+            tappable card showing company, owner, value, status, created. */}
+        <div className="hidden lg:block">
+          <Table
+            columns={columns}
+            rows={sorted}
+            rowKey={(r) => r.company.id}
+            sort={sort}
+            onSortChange={toggle}
+            loading={loading}
+            onRowClick={(r) => navigate(`/leads/${r.company.id}`)}
+            onRowContext={(e, r) => openContextMenu(e, ctxItems(r))}
+            empty={<div className="flex flex-col items-center gap-3 py-12"><Building2 size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No leads match your filters — try clearing them or create a new lead</p></div>}
+          />
+        </div>
+
+        <div className="lg:hidden">
+          <MobileLeadList
+            rows={sorted}
+            loading={loading}
+            profileMap={profileMap}
+            onOpen={(r) => navigate(`/leads/${r.company.id}`)}
+            onContext={(e, r) => openContextMenu(e, ctxItems(r))}
+          />
+        </div>
       </Card>
 
       <CreateOppModal open={createOpen} onClose={() => setCreateOpen(false)} onSaved={() => { setCreateOpen(false); reload() }} />
@@ -330,4 +352,105 @@ export default function Leads() {
       </Modal>
     </PageContainer>
   )
+}
+
+/* ------------------------------------------------------------------ */
+/* Mobile card list — phone-only, replaces the horizontally-scrolling
+/* table with a vertical stack of tappable cards. Each card shows the
+/* company, owner avatar, lead value, status badge, and created date —
+/* the same info as the desktop row, laid out for a single column.   */
+/* ------------------------------------------------------------------ */
+function MobileLeadList({
+  rows, loading, profileMap, onOpen, onContext,
+}: {
+  rows: CompanyRow[]
+  loading: boolean
+  profileMap: Record<string, Profile>
+  onOpen: (r: CompanyRow) => void
+  onContext: (e: React.MouseEvent, r: CompanyRow) => void
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-2 py-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="skeleton h-24 w-full rounded-xl" />
+        ))}
+      </div>
+    )
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-12">
+        <Building2 size={20} strokeWidth={1.75} className="text-ink-300" />
+        <p className="text-sm text-ink-400">No leads match your filters — try clearing them or create a new lead</p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1.5">
+      {rows.map((r) => {
+        const creator = r.company.created_by ? profileMap[r.company.created_by] : null
+        const current = (r.company.lead_status ?? 'new') as LeadStatus
+        const meta = LEAD_STATUS_META[current] ?? LEAD_STATUS_META.new
+        const value = r.opps.reduce((s, o) => s + (o.offer_value || o.est_revenue || 0), 0)
+        return (
+          <button
+            key={r.company.id}
+            onClick={() => onOpen(r)}
+            onContextMenu={(e) => onContext(e, r)}
+            className="card w-full text-left active:scale-[0.99] transition-transform"
+          >
+            <div className="flex items-start gap-3">
+              {r.company.logo_url ? (
+                <img src={r.company.logo_url} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
+              ) : (
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-ink-50 text-ink">
+                  <Building2 size={20} strokeWidth={1.75} />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="truncate text-sm font-semibold text-ink">{r.company.name}</p>
+                  <span className="shrink-0 text-2xs text-ink-400">{dateShort(r.company.created_at)}</span>
+                </div>
+                {r.company.website && (
+                  <p className="flex items-center gap-1 truncate text-2xs text-ink-400">
+                    <Globe size={10} strokeWidth={1.75} /> {r.company.website}
+                  </p>
+                )}
+                <div className="mt-1.5 flex items-center justify-between gap-2">
+                  {/* Owner + value */}
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    {creator ? (
+                      <>
+                        <Avatar name={creator.full_name} color={creator.avatar_color} url={creator.avatar_url} size={20} />
+                        <span className="truncate text-2xs text-ink-500">{creator.full_name}</span>
+                      </>
+                    ) : (
+                      <span className="text-2xs text-ink-400">—</span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="num text-2xs font-semibold text-ink-600">€{value.toLocaleString('en')}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-2xs font-medium ${TONE_BADGE[meta.tone]}`}>{meta.label}</span>
+                  </div>
+                </div>
+                {r.opps.length > 0 && (
+                  <p className="mt-1 text-2xs text-ink-400">{r.opps.length} offer{r.opps.length === 1 ? '' : 's'}</p>
+                )}
+              </div>
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const TONE_BADGE: Record<string, string> = {
+  neutral: 'bg-ink-100 text-ink-600',
+  info: 'bg-infoBg text-info',
+  warn: 'bg-warnBg text-warn',
+  pos: 'bg-posBg text-pos',
+  neg: 'bg-negBg text-neg',
 }

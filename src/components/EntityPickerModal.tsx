@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Search, X, Check, Phone, Building2, UserCircle } from 'lucide-react'
 import { Modal } from './ui/Modal'
+import { Button } from './ui/Button'
 import { Avatar } from './ui/Avatar'
 import type { Profile, Company } from '../lib/types'
 
@@ -16,16 +16,27 @@ interface Props {
   desc?: string
   /** A list of selectable entities, plus a special "none" option (optional). */
   entities: PickerEntity[]
-  /** Currently selected id, or '' for the "none" option. */
-  selectedId: string
-  onSelect: (id: string) => void
+  /** Currently selected id, or '' for the "none" option.  Required in
+   *  single-select mode, ignored in `multi` mode. */
+  selectedId?: string
+  onSelect?: (id: string) => void
   /** Set to show a "— None —" option at the top. */
   allowNone?: boolean
   noneLabel?: string
+  /** Multi-select mode: clicking a row toggles it in selectedIds. The
+   *  caller passes selectedIds + onSelectIds.  When `multi` is set,
+   *  single-select `selectedId` / `onSelect` are ignored. */
+  multi?: boolean
+  selectedIds?: string[]
+  onSelectIds?: (ids: string[]) => void
+  /** When multi, show a "select all" affordance + the count in the
+   *  footer.  Defaults to true. */
+  showSelectAll?: boolean
 }
 
 export function EntityPickerModal({
   open, onClose, title, desc, entities, selectedId, onSelect, allowNone, noneLabel = '— None —',
+  multi = false, selectedIds = [], onSelectIds, showSelectAll = true,
 }: Props) {
   const [q, setQ] = useState('')
 
@@ -44,8 +55,32 @@ export function EntityPickerModal({
   }, [entities, q])
 
   function choose(id: string) {
-    onSelect(id)
+    onSelect?.(id)
     onClose()
+  }
+
+  function toggle(id: string) {
+    if (!onSelectIds) return
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter((x) => x !== id)
+      : [...selectedIds, id]
+    onSelectIds(next)
+  }
+
+  const selectedSet = new Set(selectedIds)
+  const allFilteredSelected = filtered.length > 0 && filtered.every((e) => selectedSet.has(e.id))
+
+  function toggleAll() {
+    if (!onSelectIds) return
+    if (allFilteredSelected) {
+      // Deselect only the filtered set
+      const filteredIds = new Set(filtered.map((e) => e.id))
+      onSelectIds(selectedIds.filter((x) => !filteredIds.has(x)))
+    } else {
+      // Add the filtered set (dedup)
+      const merged = new Set([...selectedIds, ...filtered.map((e) => e.id)])
+      onSelectIds(Array.from(merged))
+    }
   }
 
   return (
@@ -56,6 +91,24 @@ export function EntityPickerModal({
       desc={desc}
       size="md"
       backdrop="strong"
+      footer={
+        multi ? (
+          <div className="flex w-full items-center gap-2">
+            {showSelectAll && filtered.length > 0 && (
+              <button
+                onClick={toggleAll}
+                className="text-2xs font-medium text-info hover:underline"
+              >
+                {allFilteredSelected ? 'Clear filtered' : 'Select all filtered'}
+              </button>
+            )}
+            <span className="ml-auto text-2xs text-ink-400">
+              {selectedIds.length} selected
+            </span>
+            <Button variant="secondary" size="sm" onClick={onClose}>Done</Button>
+          </div>
+        ) : undefined
+      }
     >
       <div className="flex flex-col gap-3">
         <div className="relative">
@@ -75,7 +128,7 @@ export function EntityPickerModal({
         </div>
 
         <div className="max-h-[50vh] space-y-1 overflow-y-auto pr-1 -mr-1">
-          {allowNone && (
+          {allowNone && !multi && (
             <button
               onClick={() => choose('')}
               className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
@@ -97,11 +150,11 @@ export function EntityPickerModal({
             </div>
           ) : (
             filtered.map((e) => {
-              const active = e.id === selectedId
+              const active = multi ? selectedSet.has(e.id) : e.id === selectedId
               return (
                 <button
                   key={e.id}
-                  onClick={() => choose(e.id)}
+                  onClick={() => (multi ? toggle(e.id) : choose(e.id))}
                   className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
                     active ? 'border-info bg-infoBg/40' : 'border-transparent hover:bg-ink-50'
                   }`}
