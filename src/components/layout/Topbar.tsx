@@ -158,7 +158,12 @@ function NotificationBell({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.99 }}
               transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute right-0 top-full z-[120] mt-2 w-[min(92vw,380px)] glass-strong rounded-2xl shadow-glass overflow-hidden"
+              // On mobile the translucent glass backdrop can render too
+              // transparent (especially when the page behind is a
+              // solid color), so the dropdown reads as see-through
+              // and the page content bleeds through.  Use a solid
+              // bg-surface on mobile; keep the premium glass on lg.
+              className="absolute right-0 top-full z-[120] mt-2 w-[min(92vw,380px)] rounded-2xl border border-line bg-surface shadow-glass overflow-hidden lg:bg-transparent lg:glass-strong"
             >
               <div className="flex items-center justify-between border-b border-line px-4 py-3">
                 <p className="text-sm font-semibold">Notifications</p>

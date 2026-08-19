@@ -181,6 +181,7 @@ function UserModal({ open, profile, settings, onClose, onSaved }: { open: boolea
           phone: form.phone, address: form.address,
           active: form.active, avatar_color: form.avatar_color, avatar_url: form.avatar_url,
           custom_commission_pct: form.custom_commission_pct,
+          show_in_leaderboard: form.show_in_leaderboard !== false,
         })
         push({ tone: 'success', title: 'Account updated' })
       } else {
@@ -267,6 +268,27 @@ function UserModal({ open, profile, settings, onClose, onSaved }: { open: boolea
           <Field label="Temporary password" hint="Share this with the member. They can change it later.">
             <Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Set initial password" />
           </Field>
+        )}
+
+        {/* Leaderboard visibility — admin-only, defaults to visible.
+            When unchecked, the member is excluded from ALL leaderboards
+            (sales, deals, earnings) without deactivating their account. */}
+        {isEdit && (
+          <label className="flex items-start gap-3 rounded-xl border border-line bg-ink-50/40 px-3.5 py-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.show_in_leaderboard !== false}
+              onChange={(e) => set('show_in_leaderboard', e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-line text-ink focus:ring-ink"
+            />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-ink">Show in leaderboard</p>
+              <p className="text-2xs text-ink-500">
+                When off, this member is excluded from all public rankings (sales, deals, earnings).
+                Their data still counts in admin reports and the Sellers table.
+              </p>
+            </div>
+          </label>
         )}
       </div>
     </Modal>

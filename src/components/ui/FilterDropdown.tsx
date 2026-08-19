@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 
 interface Option {
@@ -16,23 +17,71 @@ interface Props {
 
 /**
  * Platform-styled filter dropdown — replaces native `<select>` for
- * filter controls.  The trigger matches the Input/Select platform
- * styling; the options menu is a custom popover with the same look.
+ * filter controls.
+ *
+ * The options menu is rendered via `createPortal` to `document.body`
+ * with `position: fixed` so it escapes any ancestor that has
+ * `overflow: hidden` / `overflow-x: auto` (those clip an
+ * `absolute`-positioned menu and on mobile Safari the dropdown ends
+ * up hidden behind / under the table cards).  The menu's position is
+ * computed from the trigger's bounding rect on every open.
  */
 export function FilterDropdown({ value, onChange, options, placeholder = 'All', className = '' }: Props) {
   const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })
   const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const selected = options.find((o) => o.value === value)
   const displayLabel = selected ? selected.label : placeholder
 
+  // Click-outside + scroll/resize close
   useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    function onDown(e: MouseEvent) {
+      // Don't close when clicking inside the trigger or the menu
+      const t = e.target as Node
+      if (ref.current?.contains(t) || menuRef.current?.contains(t)) return
+      setOpen(false)
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    function onScrollOrResize() {
+      // Recompute position on viewport changes; close on scroll of an
+      // ancestor (so the menu doesn't get detached from the trigger).
+      if (!ref.current) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    window.addEventListener('resize', onScrollOrResize)
+    // Use capture so we catch scroll events on any ancestor (incl. the
+    // overflow-x-auto strip on the Leads page).
+    window.addEventListener('scroll', onScrollOrResize, true)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      window.removeEventListener('resize', onScrollOrResize)
+      window.removeEventListener('scroll', onScrollOrResize, true)
+    }
   }, [open])
+
+  // Compute the menu position from the trigger's rect whenever it opens.
+  useLayoutEffect(() => {
+    if (!open || !ref.current) return
+    const r = ref.current.getBoundingClientRect()
+    // Default: drop straight down, left-aligned with the trigger.
+    const menuWidth = Math.max(r.width, 220)
+    const viewport = window.innerWidth
+    // If the menu would overflow the right edge, shift it left so it
+    // stays inside the viewport.
+    let left = r.left
+    if (left + menuWidth > viewport - 8) left = viewport - menuWidth - 8
+    if (left < 8) left = 8
+    // Try to fit the menu below the trigger; if it would overflow
+    // the bottom of the viewport, flip it to open upward.
+    const menuHeight = Math.min(options.length * 40 + 16, 320)
+    let top = r.bottom + 4
+    if (top + menuHeight > window.innerHeight - 8) {
+      top = r.top - menuHeight - 4
+    }
+    setCoords({ top, left, width: menuWidth })
+  }, [open, options.length])
 
   return (
     <div className={`relative ${className}`} ref={ref}>
@@ -44,8 +93,12 @@ export function FilterDropdown({ value, onChange, options, placeholder = 'All', 
         <span className={`truncate ${!selected ? 'text-ink-400' : ''}`}>{displayLabel}</span>
         <ChevronDown size={14} strokeWidth={1.75} className={`shrink-0 text-ink-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && (
-        <div className="absolute left-0 top-full z-30 mt-1 min-w-full rounded-xl border border-line bg-surface p-1 shadow-glass">
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left, width: coords.width, zIndex: 200 }}
+          className="rounded-xl border border-line bg-surface p-1 shadow-glass"
+        >
           {options.map((o) => {
             const active = o.value === value
             return (
@@ -65,7 +118,8 @@ export function FilterDropdown({ value, onChange, options, placeholder = 'All', 
               </button>
             )
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

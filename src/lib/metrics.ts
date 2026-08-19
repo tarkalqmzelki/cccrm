@@ -117,6 +117,10 @@ export function leaderboard(
   const rows: Record<string, LeaderRow> = {}
   for (const p of profiles) {
     if (p.role === 'admin') continue
+    // Admins can exclude specific members from all leaderboards via
+    // Sellers → Edit Account.  Defaults to visible (true) for any
+    // row where the column is null (older profiles pre-schema49).
+    if (p.show_in_leaderboard === false) continue
     const rev = revenueOf(deals, p.id)
     const level = effectiveLevel(p, rev, settings)
     const sellerPayouts = payouts.filter((x) => x.seller_id === p.id)

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
-import { X, Check, ArrowLeftRight } from 'lucide-react'
+import { X, Check, ArrowLeftRight, Settings2 } from 'lucide-react'
 import { NAV } from './nav'
 import type { NavItem } from './nav'
 import { useAuth } from '../../context/AuthContext'
@@ -43,6 +43,7 @@ function saveSlots(slots: string[]) {
 
 export function MobileNav() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const badges = useSidebarBadges(user)
   const [slots, setSlots] = useState<string[]>(() => {
     if (!user) return []
@@ -107,71 +108,114 @@ export function MobileNav() {
         <div className="flex items-stretch justify-between px-2 pt-1.5 pb-1.5">
           {visible.map((n, i) => {
             const count = badgeFor(n.to)
+            // Path check for active styling (NavLink would do this
+            // for us, but using <button> avoids the iOS long-press
+            // link-preview sheet that was eating our long-press).
+            const isActive = (() => {
+              const p = window.location.pathname
+              if (n.to === '/') return p === '/'
+              return p.startsWith(n.to)
+            })()
             return (
-              <NavLink
+              <button
                 key={n.to}
-                to={n.to}
-                end={n.to === '/'}
-                className={({ isActive }) =>
-                  `relative flex flex-1 flex-col items-center gap-0.5 rounded-lg py-1.5 text-2xs font-medium transition-colors ${
-                    isActive ? 'text-ink' : 'text-ink-400'
-                  }`
-                }
+                type="button"
+                onClick={() => navigate(n.to)}
                 onContextMenu={(e) => {
-                  // Long-press on phones fires contextmenu too
+                  // Right-click / long-press fallback (Android + desktop
+                  // testing).  Buttons don't trigger iOS's link preview.
                   e.preventDefault()
                   setEditingIndex(i)
                 }}
                 onTouchStart={(e) => {
                   // Track a touch start so we can detect a long press.
-                  // We don't navigate-block here — the browser's own
-                  // click will fire only if it's a tap, not a long
-                  // press.  We just remember the touch so we can show
-                  // the picker on touchend if it was long.
+                  // The button doesn't trigger iOS's link-preview sheet
+                  // (that's only for <a> tags), so we own the long-press
+                  // gesture here.
                   const touch = e.touches[0]
                   const target = e.currentTarget
                   ;(target as any)._lp = {
                     x: touch.clientX,
                     y: touch.clientY,
                     t: Date.now(),
+                    timer: setTimeout(() => {
+                      // Long-press fired while still touching — pop the
+                      // slot editor.  We don't navigate because the
+                      // click event won't fire after a long-press.
+                      setEditingIndex(i)
+                      // Light haptic-like feedback (CSS vibration not
+                      // available cross-browser; visual feedback only).
+                      target.classList.add('scale-95')
+                      setTimeout(() => target.classList.remove('scale-95'), 150)
+                    }, 500),
                   }
                 }}
-                onTouchEnd={(e) => {
+                onTouchMove={(e) => {
+                  // Cancel the long-press if the finger moves more than
+                  // a few pixels (scrolling / dragging).
                   const target = e.currentTarget as any
                   const lp = target._lp
                   if (!lp) return
-                  const dt = Date.now() - lp.t
-                  // Long-press = 500ms+ with little movement
-                  if (dt >= 500) {
-                    e.preventDefault()
-                    setEditingIndex(i)
+                  const touch = e.touches[0]
+                  const dx = Math.abs(touch.clientX - lp.x)
+                  const dy = Math.abs(touch.clientY - lp.y)
+                  if (dx > 10 || dy > 10) {
+                    clearTimeout(lp.timer)
+                    delete target._lp
                   }
-                  delete target._lp
                 }}
+                onTouchEnd={(e) => {
+                  // Tap (short press) — let the normal onClick navigate.
+                  // Long-press already fired via the timer in
+                  // onTouchStart; cancel any pending timer here in case
+                  // the user lifted before 500ms (we don't want a
+                  // late pop of the slot editor after navigation).
+                  const target = e.currentTarget as any
+                  const lp = target._lp
+                  if (lp) {
+                    clearTimeout(lp.timer)
+                    delete target._lp
+                  }
+                }}
+                className={`relative flex flex-1 flex-col items-center gap-0.5 rounded-lg py-1.5 text-2xs font-medium transition-colors ${
+                  isActive ? 'text-ink' : 'text-ink-400'
+                }`}
               >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.span
-                        layoutId="mobile-nav-pill"
-                        className="absolute -top-0.5 h-0.5 w-8 rounded-full bg-ink"
-                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                      />
-                    )}
-                    <span className="relative">
-                      <n.icon size={20} strokeWidth={1.75} />
-                      {count > 0 && (
-                        <span className="absolute -right-2 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-neg px-1 text-2xs font-bold text-white">
-                          {count > 9 ? '9+' : count}
-                        </span>
-                      )}
-                    </span>
-                    <span>{n.label}</span>
-                  </>
+                {isActive && (
+                  <motion.span
+                    layoutId="mobile-nav-pill"
+                    className="absolute -top-0.5 h-0.5 w-8 rounded-full bg-ink"
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  />
                 )}
-              </NavLink>
+                <span className="relative">
+                  <n.icon size={20} strokeWidth={1.75} />
+                  {count > 0 && (
+                    <span className="absolute -right-2 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-neg px-1 text-2xs font-bold text-white">
+                      {count > 9 ? '9+' : count}
+                    </span>
+                  )}
+                </span>
+                <span>{n.label}</span>
+              </button>
             )
           })}
+
+          {/* Customize handle — a tiny entry point that always opens
+              the slot editor for slot #0.  Useful when the user can't
+              long-press (e.g. accessibility, or just discoverability)
+              and as a fallback if a future OS update interferes with
+              touch-based long-press detection. */}
+          <button
+            type="button"
+            onClick={() => setEditingIndex(0)}
+            className="flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-2xs font-medium text-ink-300 hover:text-ink-500 transition-colors"
+            title="Customize quick actions"
+            aria-label="Customize quick actions"
+          >
+            <Settings2 size={18} strokeWidth={1.75} />
+            <span className="hidden">Edit</span>
+          </button>
         </div>
       </nav>
 

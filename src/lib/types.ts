@@ -378,6 +378,9 @@ export interface Profile {
   address: string
   uid: string
   custom_commission_pct: number | null
+  /** When false, the member is excluded from all leaderboards (admin
+   *  toggle from Sellers → Edit Account). Defaults to true. */
+  show_in_leaderboard: boolean
   created_at: string
   updated_at: string
 }
@@ -503,6 +506,7 @@ export type NotificationKey =
   | 'user_lead_reminder'
   | 'user_whats_new'
   | 'user_broadcast'
+  | 'user_chat'
 
 export interface NotificationKeyMeta {
   key: NotificationKey
@@ -525,6 +529,7 @@ export const NOTIFICATION_KEYS: NotificationKeyMeta[] = [
   { key: 'user_lead_reminder',    label: 'Lead reminders',         desc: 'Reminders you scheduled for your leads.',   role: 'user'  },
   { key: 'user_whats_new',        label: "What's new posts",        desc: 'When an admin publishes a new release note.', role: 'user'  },
   { key: 'user_broadcast',        label: 'Broadcast announcements', desc: 'Platform-wide announcements sent by admins.', role: 'user'  },
+  { key: 'user_chat',             label: 'General chat messages',   desc: 'When someone posts in the platform-wide general chat.', role: 'user' },
 ]
 
 export type NotificationTone = 'low' | 'normal' | 'high' | 'urgent'
