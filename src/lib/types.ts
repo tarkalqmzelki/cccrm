@@ -714,3 +714,42 @@ export const INVOICE_SERVICE_CATALOG = [
   'Hosting & maintenance',
   'Other',
 ]
+
+/** Issuer identity + default templates that prefill every new invoice.
+ *  Stored in a single-row `invoice_settings` table (admin-only write,
+ *  public read so the verify route can show the issuer name). */
+export interface InvoiceSettings {
+  id: number
+  company_name: string
+  company_subname: string
+  company_address: string
+  company_email: string
+  company_phone: string
+  company_website: string
+  company_vat: string
+  company_id: string
+  default_bank: { bank: string; iban: string; bic: string; account: string } | null
+  default_legal_notes: string
+  default_signature_name: string
+  default_payment_terms: string
+  qr_verify_base_url: string
+  updated_at: string
+}
+
+export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
+  id: 1,
+  company_name: 'Calista Concept',
+  company_subname: 'Legendary Design Ltd.',
+  company_address: '',
+  company_email: 'ops@calistaconcept.eu',
+  company_phone: '',
+  company_website: '',
+  company_vat: '',
+  company_id: '',
+  default_bank: null,
+  default_legal_notes: '',
+  default_signature_name: '',
+  default_payment_terms: '',
+  qr_verify_base_url: 'https://calistaconcept.eu/invoice/verify',
+  updated_at: '',
+}

@@ -8,8 +8,9 @@ import type {
   ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
   MessagePriority, MessageFolder,
   NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel, LeadReminder, LeadStatus, AdminDoc, AdminDocSnippet,
-  Invoice, InvoiceService, InvoiceStatus,
+  Invoice, InvoiceService, InvoiceStatus, InvoiceSettings,
 } from './types'
+import { DEFAULT_INVOICE_SETTINGS } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
 const iso = () => new Date().toISOString()
@@ -1483,5 +1484,35 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     const seqStr = last.replace(prefix, '')
     const seq = parseInt(seqStr, 10) || 0
     return `${prefix}${String(seq + 1).padStart(4, '0')}`
+  },
+
+  /* ================================================================== */
+  /* INVOICE SETTINGS — issuer identity + default templates             */
+  /* ================================================================== */
+
+  async getInvoiceSettings(): Promise<InvoiceSettings> {
+    const { data, error } = await supabase!.from('invoice_settings')
+      .select('*').eq('id', 1).maybeSingle()
+    if (error || !data) return { ...DEFAULT_INVOICE_SETTINGS }
+    return data as InvoiceSettings
+  },
+
+  async updateInvoiceSettings(patch: Partial<InvoiceSettings>): Promise<void> {
+    const payload: Record<string, unknown> = { ...patch, updated_at: iso() }
+    delete payload.id
+    const { error } = await supabase!.from('invoice_settings')
+      .update(payload).eq('id', 1)
+    if (error) throw error
+  },
+
+  /** Public read — used by the /invoice/verify/:id route which doesn't
+   *  have an authenticated session.  Returns only the issuer identity
+   *  fields (no templates), but RLS already gates the templates to
+   *  admins and exposes the identity columns to anonymous reads. */
+  async getPublicInvoiceSettings(): Promise<InvoiceSettings> {
+    const { data, error } = await supabase!.from('invoice_settings')
+      .select('*').eq('id', 1).maybeSingle()
+    if (error || !data) return { ...DEFAULT_INVOICE_SETTINGS }
+    return data as InvoiceSettings
   },
 }

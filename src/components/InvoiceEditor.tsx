@@ -12,7 +12,7 @@ import {
   INVOICE_STATUS_META,
   INVOICE_STATUSES,
 } from '../lib/types'
-import type { Invoice, InvoiceService, InvoiceStatus } from '../lib/types'
+import type { Invoice, InvoiceService, InvoiceStatus, InvoiceSettings } from '../lib/types'
 import {
   DEFAULT_EXTRAS, DOCUMENT_TYPES, SECONDARY_SECTION_TYPES,
   parseInvoiceNotes, serializeInvoiceNotes, defaultQrPayload,
@@ -73,6 +73,18 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
     shipTo: false, references: false, bank: false, qr: false,
     legal: false, signatures: false, secondary: false,
   })
+  // Issuer identity (loaded from invoice_settings once on mount) —
+  // used to prefill new invoices with the admin's saved templates.
+  const [issuerSettings, setIssuerSettings] = useState<InvoiceSettings | null>(null)
+  useEffect(() => {
+    db.getInvoiceSettings().then(setIssuerSettings).catch(() => {})
+  }, [])
+
+  // Helper to build the default QR payload from settings
+  function buildQrPayload(inv?: Invoice): string {
+    if (inv) return `${issuerSettings?.qr_verify_base_url ?? 'https://calistaconcept.eu/invoice/verify'}/${inv.id}`
+    return issuerSettings?.qr_verify_base_url ?? 'https://calistaconcept.eu/invoice/verify'
+  }
 
   useEffect(() => {
     if (!open) return
@@ -115,11 +127,30 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
       setStatus('draft')
       setVatIncluded(false); setVatPct('0')
       setFreeformNotes('')
-      setExtras({ ...DEFAULT_EXTRAS })
-      setShowSection({ shipTo: false, references: false, bank: false, qr: false, legal: false, signatures: false, secondary: false })
       setItems([{ name: '', description: '', quantity: 1, unit_price: 0 }])
+      // Prefill optional sections from the saved invoice settings so
+      // the admin doesn't retype bank/legal/signature on every invoice.
+      const prefilledExtras: InvoiceExtras = { ...DEFAULT_EXTRAS }
+      if (issuerSettings) {
+        if (issuerSettings.default_bank) prefilledExtras.bank = issuerSettings.default_bank
+        if (issuerSettings.default_legal_notes) prefilledExtras.legal_notes = issuerSettings.default_legal_notes
+        if (issuerSettings.default_signature_name) prefilledExtras.signature_issued_by = issuerSettings.default_signature_name
+        if (issuerSettings.default_payment_terms) prefilledExtras.payment_terms = issuerSettings.default_payment_terms
+      }
+      setExtras(prefilledExtras)
+      // Auto-open the prefilled sections so the admin sees what's been
+      // carried over from the settings.
+      setShowSection({
+        shipTo: false,
+        references: false,
+        bank: !!prefilledExtras.bank,
+        qr: false,  // admin opts in per invoice
+        legal: !!prefilledExtras.legal_notes,
+        signatures: !!prefilledExtras.signature_issued_by,
+        secondary: false,
+      })
     }
-  }, [open, editing, nextNumber])
+  }, [open, editing, nextNumber, issuerSettings])
 
   const subtotal = useMemo(
     () => items.reduce((s, x) => s + Number(x.quantity) * Number(x.unit_price), 0),
@@ -166,7 +197,7 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
       if (cleanExtras.qr_enabled && !cleanExtras.qr_payload.trim()) {
         // Auto-fill with the default verification URL when QR is on but
         // the admin didn't customise the payload.
-        cleanExtras.qr_payload = editing ? defaultQrPayload(editing) : ''
+        cleanExtras.qr_payload = editing ? buildQrPayload(editing) : ''
       }
       const notes = serializeInvoiceNotes(freeformNotes.trim(), cleanExtras)
 
@@ -421,14 +452,14 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
               onToggle={(v) => {
                 setShowSection((s) => ({ ...s, qr: v }))
                 patchExtras({ qr_enabled: v })
-                if (v && !extras.qr_payload && editing) patchExtras({ qr_payload: defaultQrPayload(editing) })
+                if (v && !extras.qr_payload && editing) patchExtras({ qr_payload: buildQrPayload(editing) })
               }}
             >
-              <Field label="QR payload" hint="What the QR code encodes. Defaults to a verification URL.">
+              <Field label="QR payload" hint="What the QR code encodes. Defaults to your verification URL + invoice ID.">
                 <Input
                   value={extras.qr_payload}
                   onChange={(e) => patchExtras({ qr_payload: e.target.value })}
-                  placeholder={editing ? defaultQrPayload(editing) : 'https://calistaconcept.eu/invoice/verify/{id}'}
+                  placeholder={editing ? buildQrPayload(editing) : `${issuerSettings?.qr_verify_base_url ?? 'https://calistaconcept.eu/invoice/verify'}/{id}`}
                   className="font-mono text-sm"
                 />
               </Field>

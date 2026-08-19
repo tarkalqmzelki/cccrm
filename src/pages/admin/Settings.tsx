@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { Card, CardHeader } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
-import { Input, Field } from '../../components/ui/Input'
+import { Input, Field, Textarea } from '../../components/ui/Input'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { PageContainer } from '../../components/layout/AppShell'
 import { useToast } from '../../context/ToastContext'
-import { DEFAULT_SETTINGS, SYSTEM_STATUS_META } from '../../lib/types'
-import type { Settings, SystemStatus, SystemStatusValue } from '../../lib/types'
+import { DEFAULT_SETTINGS, SYSTEM_STATUS_META, DEFAULT_INVOICE_SETTINGS } from '../../lib/types'
+import type { Settings, SystemStatus, SystemStatusValue, InvoiceSettings } from '../../lib/types'
 import { dateShort } from '../../lib/format'
 import { NotificationTemplateEditor } from '../../components/NotificationTemplateEditor'
 import { NotificationPreferences } from '../../components/NotificationPreferences'
@@ -21,6 +21,7 @@ import { BroadcastManager } from '../../components/BroadcastManager'
 
 type Category =
   | 'commissions'
+  | 'invoice-settings'
   | 'notif-preferences'
   | 'notif-templates'
   | 'notif-log'
@@ -40,6 +41,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'commissions',       label: 'Commissions',       icon: Settings2,  group: 'Commissions' },
+  { id: 'invoice-settings',  label: 'Invoice settings',  icon: InvoiceIcon, group: 'Commissions' },
   { id: 'notif-preferences',  label: 'Your preferences',  icon: Bell,       group: 'Notifications' },
   { id: 'notif-templates',    label: 'Templates',         icon: Bell,       group: 'Notifications' },
   { id: 'broadcast',          label: 'Broadcast',         icon: Megaphone,  group: 'Notifications' },
@@ -53,6 +55,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
   commissions:       { title: 'Commissions',                      desc: 'Configure level thresholds, commission rates, and referral bonuses.' },
+  'invoice-settings': { title: 'Invoice settings',                desc: 'Your business identity + default templates that prefill every new invoice. Update once, reuse on every invoice.' },
   'notif-preferences': { title: 'Your notification preferences',  desc: 'Enable or disable each alert type for your own account.' },
   'notif-templates':   { title: 'Notification templates',         desc: 'Edit the title and body format applied to every push notification. Disabling a type here suppresses it for everyone.' },
   broadcast:           { title: 'Broadcast announcement',         desc: 'Send a push notification to every active user. Toggle the channel on/off in Templates.' },
@@ -148,8 +151,7 @@ export default function SettingsPage() {
 
           {/* ---------- Commissions ---------- */}
           {active === 'commissions' && (
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-              <Card>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">              <Card>
                 <CardHeader title="Level thresholds" desc="Revenue needed to reach each level (€)" />
                 {loading ? (
                   <div className="space-y-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-11 w-full rounded-xl" />)}</div>
@@ -217,6 +219,11 @@ export default function SettingsPage() {
                 </div>
               </Card>
             </div>
+          )}
+
+          {/* ---------- Invoice settings ---------- */}
+          {active === 'invoice-settings' && (
+            <InvoiceSettingsPanel />
           )}
 
           {/* ---------- Notifications: Preferences ---------- */}
@@ -442,4 +449,170 @@ function SystemStatusAdmin() {
 
 function dateShortSafe(iso: string): string {
   try { return dateShort(iso) } catch { return '—' }
+}
+
+/* ------------------------------------------------------------------ */
+/* Invoice settings panel — issuer identity + default templates       */
+/* ------------------------------------------------------------------ */
+function InvoiceSettingsPanel() {
+  const { push } = useToast()
+  const { data, loading } = useAsync(async () => db.getInvoiceSettings(), [])
+  const [form, setForm] = useState<InvoiceSettings>(DEFAULT_INVOICE_SETTINGS)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (data) setForm(data)
+  }, [data])
+
+  function set<K extends keyof InvoiceSettings>(k: K, v: InvoiceSettings[K]) {
+    setForm((f) => ({ ...f, [k]: v }))
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      await db.updateInvoiceSettings({
+        company_name: form.company_name,
+        company_subname: form.company_subname,
+        company_address: form.company_address,
+        company_email: form.company_email,
+        company_phone: form.company_phone,
+        company_website: form.company_website,
+        company_vat: form.company_vat,
+        company_id: form.company_id,
+        default_bank: form.default_bank,
+        default_legal_notes: form.default_legal_notes,
+        default_signature_name: form.default_signature_name,
+        default_payment_terms: form.default_payment_terms,
+        qr_verify_base_url: form.qr_verify_base_url,
+      })
+      push({ tone: 'success', title: 'Invoice settings saved', desc: 'New invoices will be prefilled from these templates.' })
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not save', desc: e?.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Issuer identity */}
+      <Card>
+        <CardHeader title="Your business identity" desc="The 'From' block printed on every invoice. Shows the logo + your trading name + the legal entity underneath." />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Trading name" required>
+            <Input value={form.company_name} onChange={(e) => set('company_name', e.target.value)} placeholder="Calista Concept" />
+          </Field>
+          <Field label="Legal entity name" hint="Printed underneath the trading name">
+            <Input value={form.company_subname} onChange={(e) => set('company_subname', e.target.value)} placeholder="Legendary Design Ltd." />
+          </Field>
+          <Field label="Address">
+            <Input value={form.company_address} onChange={(e) => set('company_address', e.target.value)} placeholder="Via Roma 12, Milano" />
+          </Field>
+          <Field label="Email">
+            <Input type="email" value={form.company_email} onChange={(e) => set('company_email', e.target.value)} placeholder="accounting@calistaconcept.eu" />
+          </Field>
+          <Field label="Phone">
+            <Input value={form.company_phone} onChange={(e) => set('company_phone', e.target.value)} placeholder="+39 02 1234 5678" />
+          </Field>
+          <Field label="Website">
+            <Input value={form.company_website} onChange={(e) => set('company_website', e.target.value)} placeholder="calistaconcept.eu" />
+          </Field>
+          <Field label="VAT ID">
+            <Input value={form.company_vat} onChange={(e) => set('company_vat', e.target.value)} placeholder="BG123456789" />
+          </Field>
+          <Field label="Company ID / Reg. number">
+            <Input value={form.company_id} onChange={(e) => set('company_id', e.target.value)} placeholder="123456789" />
+          </Field>
+        </div>
+      </Card>
+
+      {/* Default templates */}
+      <Card>
+        <CardHeader title="Default templates" desc="Prefill every new invoice so you don't retype these each time. You can override per invoice." />
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Bank name">
+              <Input
+                value={form.default_bank?.bank ?? ''}
+                onChange={(e) => set('default_bank', { ...(form.default_bank || { bank: '', iban: '', bic: '', account: '' }), bank: e.target.value })}
+                placeholder="UniCredit Bulbank"
+              />
+            </Field>
+            <Field label="IBAN">
+              <Input
+                value={form.default_bank?.iban ?? ''}
+                onChange={(e) => set('default_bank', { ...(form.default_bank || { bank: '', iban: '', bic: '', account: '' }), iban: e.target.value })}
+                placeholder="BG80 BNBG 9661 1020 3456 78"
+                className="font-mono text-sm"
+              />
+            </Field>
+            <Field label="BIC / SWIFT">
+              <Input
+                value={form.default_bank?.bic ?? ''}
+                onChange={(e) => set('default_bank', { ...(form.default_bank || { bank: '', iban: '', bic: '', account: '' }), bic: e.target.value })}
+                placeholder="BICXXXXXXXX"
+                className="font-mono text-sm"
+              />
+            </Field>
+            <Field label="Account number (optional)">
+              <Input
+                value={form.default_bank?.account ?? ''}
+                onChange={(e) => set('default_bank', { ...(form.default_bank || { bank: '', iban: '', bic: '', account: '' }), account: e.target.value })}
+              />
+            </Field>
+          </div>
+          <Field label="Default payment terms" hint="Printed in the payment information block">
+            <Input
+              value={form.default_payment_terms}
+              onChange={(e) => set('default_payment_terms', e.target.value)}
+              placeholder="Bank transfer within 30 days from invoice date."
+            />
+          </Field>
+          <Field label="Default legal / tax footnote" hint="Printed near the bottom of the invoice">
+            <Textarea
+              value={form.default_legal_notes}
+              onChange={(e) => set('default_legal_notes', e.target.value)}
+              rows={3}
+              placeholder="VAT payable by recipient under reverse charge mechanism. This invoice was generated electronically and is valid without signature."
+            />
+          </Field>
+          <Field label="Default signature — issued by" hint="Name pre-filled on every new invoice's signature block">
+            <Input
+              value={form.default_signature_name}
+              onChange={(e) => set('default_signature_name', e.target.value)}
+              placeholder="Sofia Marchetti"
+            />
+          </Field>
+        </div>
+      </Card>
+
+      {/* QR verification */}
+      <Card>
+        <CardHeader title="QR code verification" desc="Every invoice's QR code points to this URL with the invoice ID appended. When someone scans the QR, they land on a page that confirms the invoice is genuine." />
+        <Field label="Verification base URL" hint="The QR encodes `{base URL}/{invoice id}`">
+          <Input
+            value={form.qr_verify_base_url}
+            onChange={(e) => set('qr_verify_base_url', e.target.value)}
+            placeholder="https://calistaconcept.eu/invoice/verify"
+            className="font-mono text-sm"
+          />
+        </Field>
+      </Card>
+
+      <div className="flex justify-end">
+        <Button icon={<Save size={15} strokeWidth={1.75} />} onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save invoice settings'}
+        </Button>
+      </div>
+    </div>
+  )
 }

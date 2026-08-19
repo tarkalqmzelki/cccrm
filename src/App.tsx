@@ -5,6 +5,7 @@ import { AppShell } from './components/layout/AppShell'
 import { ContextMenuHost } from './components/ui/ContextMenu'
 import { PortraitOnlyOverlay } from './components/PortraitOnlyOverlay'
 import Login from './pages/Login'
+import InvoiceVerifyPage from './pages/InvoiceVerifyPage'
 import Dashboard from './pages/Dashboard'
 import Deals from './pages/Deals'
 import DealDetail from './pages/DealDetail'
@@ -75,6 +76,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Public invoice verification — what a phone scans via the QR
+            code on a printed invoice.  Outside the Protected wrapper. */}
+        <Route path="/invoice/verify/:id" element={<InvoiceVerifyPage />} />
         <Route
           path="/*"
           element={

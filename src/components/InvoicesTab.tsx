@@ -10,8 +10,8 @@ import { Badge } from './ui/Badge'
 import { useToast } from '../context/ToastContext'
 import { InvoiceEditor } from './InvoiceEditor'
 import { FormalInvoiceDocument } from './FormalInvoiceDocument'
-import { INVOICE_STATUS_META } from '../lib/types'
-import type { Invoice, InvoiceService, InvoiceStatus } from '../lib/types'
+import { INVOICE_STATUS_META, DEFAULT_INVOICE_SETTINGS } from '../lib/types'
+import type { Invoice, InvoiceService, InvoiceStatus, InvoiceSettings } from '../lib/types'
 import { eurFull, dateShort } from '../lib/format'
 
 interface Props {
@@ -31,7 +31,7 @@ interface Props {
 export function InvoicesTab({ refreshKey, onInvoicesChanged }: Props) {
   const { push } = useToast()
   const { data, loading, reload } = useAsync(async () => {
-    const invs = await db.listInvoices()
+    const [invs, settings] = await Promise.all([db.listInvoices(), db.getInvoiceSettings()])
     // Load services per invoice in parallel (small N — admins only).
     const servicesByInvoice: Record<string, InvoiceService[]> = {}
     await Promise.all(
@@ -39,7 +39,7 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged }: Props) {
         servicesByInvoice[inv.id] = await db.listInvoiceServices(inv.id)
       }),
     )
-    return { invoices: invs, servicesByInvoice }
+    return { invoices: invs, servicesByInvoice, settings: settings || DEFAULT_INVOICE_SETTINGS }
   }, [refreshKey])
 
   const [editorOpen, setEditorOpen] = useState(false)
@@ -349,8 +349,14 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged }: Props) {
         <FormalInvoiceDocument
           invoice={preview}
           services={previewServices}
-          companyAddress="Referrals & Revenue Platform"
-          companyVat="BGXXXXXXXXX"
+          companyName={data?.settings?.company_name ?? 'Calista Concept'}
+          companySubname={data?.settings?.company_subname ?? 'Legendary Design Ltd.'}
+          companyAddress={data?.settings?.company_address ?? ''}
+          companyEmail={data?.settings?.company_email ?? 'ops@calistaconcept.eu'}
+          companyPhone={data?.settings?.company_phone ?? ''}
+          companyWebsite={data?.settings?.company_website ?? ''}
+          companyVat={data?.settings?.company_vat ?? ''}
+          companyId={data?.settings?.company_id ?? ''}
         />
       )}
 
