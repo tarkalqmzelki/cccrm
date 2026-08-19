@@ -208,9 +208,44 @@ Deno.serve(async (req) => {
       when: (meta.when as string) ?? '',
     }
     const title = fillTemplate(template.title_template, vars) || 'Calista Concept'
-    const bodyText = fillTemplate(template.body_template, vars)
+    let bodyText = fillTemplate(template.body_template, vars)
     const tag = TONE_TAG[template.tone] || ''
+
+    // Web Push payloads MUST be ≤ 4096 bytes (RFC 8188 / FCM + APNs
+    // enforce this).  Long release-note or broadcast bodies (template
+    // body `{body}`) easily blow that cap, which makes the whole push
+    // fail with HTTP 413 PayloadTooLarge.  Truncate the body to leave
+    // headroom for the JSON envelope + title + url + tag.
+    const MAX_BODY = 3800
+    const encoder = new TextEncoder()
+    if (encoder.encode(bodyText).length > MAX_BODY) {
+      // Truncate by characters first (faster), then byte-trim in case
+      // the cut landed mid-multibyte char near the limit.
+      bodyText = bodyText.slice(0, MAX_BODY)
+      while (encoder.encode(bodyText).length > MAX_BODY && bodyText.length > 0) {
+        bodyText = bodyText.slice(0, -1)
+      }
+      bodyText = bodyText + '…'
+    }
+
     const payload = JSON.stringify({ title, body: bodyText, tag: tag || undefined, url: row.action_url || '/' })
+    // Final safety net — if even the title is huge, cap the whole
+    // payload so we never send a >4096-byte request body to FCM/APNs.
+    const MAX_PAYLOAD = 4080
+    if (encoder.encode(payload).length > MAX_PAYLOAD) {
+      const trimmed = payload.slice(0, MAX_PAYLOAD - 4) + '…"}'
+      console.warn('[send-push] payload over 4096 bytes after truncation — hard-capping')
+      const sub = toWebPushSub(list[0])
+      try {
+        await webPush.sendNotification(sub, trimmed, { TTL: 86400 })
+        sent++
+      } catch (e: any) {
+        errors.push(`payload-cap still exceeded: ${(e?.message || 'unknown')}`)
+      }
+      const detail = `Payload hard-capped to ${MAX_PAYLOAD} bytes (original ${encoder.encode(payload).length}).`
+      await log(sent > 0 ? 'sent' : 'error', detail, sent, key)
+      return json({ sent, errors })
+    }
     console.log('[send-push] payload built:', payload.slice(0, 120))
 
     // ---- Fetch subscriptions ----

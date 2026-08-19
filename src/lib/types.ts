@@ -648,3 +648,69 @@ export interface ChangelogEntry {
   published: boolean
   created_by: string | null
 }
+
+// =====================================================================
+// INVOICES
+// =====================================================================
+
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void'
+
+export const INVOICE_STATUS_META: Record<InvoiceStatus, { label: string; tone: 'neutral' | 'info' | 'warn' | 'pos' | 'neg' }> = {
+  draft: { label: 'Draft',   tone: 'neutral' },
+  sent:  { label: 'Sent',    tone: 'info'    },
+  paid:  { label: 'Paid',    tone: 'pos'     },
+  void:  { label: 'Void',    tone: 'neg'     },
+}
+
+export const INVOICE_STATUSES = Object.keys(INVOICE_STATUS_META) as InvoiceStatus[]
+
+export interface InvoiceService {
+  id: string
+  invoice_id: string
+  name: string
+  description: string
+  quantity: number
+  unit_price: number
+  position: number
+  created_at: string
+}
+
+export interface Invoice {
+  id: string
+  number: string
+  billed_to: string
+  billed_address: string
+  billed_email: string
+  billed_vat: string
+  issue_date: string
+  due_date: string | null
+  status: InvoiceStatus
+  vat_included: boolean
+  vat_pct: number
+  currency: string
+  notes: string
+  finance_entry_id: string | null
+  created_at: string
+  updated_at: string
+  created_by: string | null
+}
+
+/** Default service catalog the admin can pick from when adding a line
+ *  to an invoice.  They can also type a free-form name to add a new
+ *  one on the fly. */
+export const INVOICE_SERVICE_CATALOG = [
+  'Web design',
+  'Web development',
+  'UI/UX design',
+  'Branding & identity',
+  'SEO consultation',
+  'Marketing strategy',
+  'Copywriting',
+  'Photography',
+  'Social media management',
+  'Consultation',
+  'Retainer',
+  'Project management',
+  'Hosting & maintenance',
+  'Other',
+]

@@ -8,6 +8,7 @@ import type {
   ScheduledActivity, ScheduledActivityType, ScheduledActivityStatus, ActivityComment,
   MessagePriority, MessageFolder,
   NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel, LeadReminder, LeadStatus, AdminDoc, AdminDocSnippet,
+  Invoice, InvoiceService, InvoiceStatus,
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 
@@ -941,8 +942,10 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     amount: number
     entry_date: string
     deal_id?: string | null
-  }): Promise<void> {
+  }): Promise<string> {
+    const id = uuid()
     const { error } = await supabase!.from('finance_entries').insert({
+      id,
       kind: e.kind,
       category: e.category,
       title: e.title,
@@ -952,9 +955,24 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
       deal_id: e.deal_id || null,
     })
     if (error) throw error
+    return id
   },
 
-async deleteFinanceEntry(id: string): Promise<void> {
+  async updateFinanceEntry(id: string, patch: Partial<{
+    kind: FinanceKind
+    category: FinanceCategory
+    title: string
+    description: string
+    amount: number
+    entry_date: string
+    deal_id: string | null
+  }>): Promise<void> {
+    const { error } = await supabase!.from('finance_entries')
+      .update(patch).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteFinanceEntry(id: string): Promise<void> {
     const { error } = await supabase!.from('finance_entries').delete().eq('id', id)
     if (error) throw error
   },
@@ -1293,5 +1311,177 @@ async deleteFinanceEntry(id: string): Promise<void> {
     const { error } = await supabase!.from('inbox_messages').insert(rows as never)
     if (error) throw error
     return { sent: list.length }
+  },
+
+  /* ================================================================== */
+  /* INVOICES                                                            */
+  /* ================================================================== */
+
+  async listInvoices(): Promise<Invoice[]> {
+    const { data, error } = await supabase!.from('invoices')
+      .select('*').order('issue_date', { ascending: false }).order('number', { ascending: false })
+    if (error) throw error
+    return (data || []) as Invoice[]
+  },
+
+  async getInvoice(id: string): Promise<Invoice | null> {
+    const { data, error } = await supabase!.from('invoices')
+      .select('*').eq('id', id).single()
+    if (error) return null
+    return data as Invoice
+  },
+
+  async createInvoice(inv: {
+    number: string
+    billed_to: string
+    billed_address?: string
+    billed_email?: string
+    billed_vat?: string
+    issue_date: string
+    due_date?: string | null
+    status?: InvoiceStatus
+    vat_included?: boolean
+    vat_pct?: number
+    currency?: string
+    notes?: string
+    created_by?: string | null
+  }): Promise<Invoice> {
+    const { data, error } = await supabase!.from('invoices').insert({
+      number: inv.number,
+      billed_to: inv.billed_to,
+      billed_address: inv.billed_address ?? '',
+      billed_email: inv.billed_email ?? '',
+      billed_vat: inv.billed_vat ?? '',
+      issue_date: inv.issue_date,
+      due_date: inv.due_date ?? null,
+      status: inv.status ?? 'draft',
+      vat_included: inv.vat_included ?? false,
+      vat_pct: inv.vat_pct ?? 0,
+      currency: inv.currency ?? 'EUR',
+      notes: inv.notes ?? '',
+      created_by: inv.created_by ?? null,
+    }).select().single()
+    if (error) throw error
+    return data as Invoice
+  },
+
+  async updateInvoice(id: string, patch: Partial<{
+    number: string
+    billed_to: string
+    billed_address: string
+    billed_email: string
+    billed_vat: string
+    issue_date: string
+    due_date: string | null
+    status: InvoiceStatus
+    vat_included: boolean
+    vat_pct: number
+    currency: string
+    notes: string
+    finance_entry_id: string | null
+  }>): Promise<void> {
+    const { error } = await supabase!.from('invoices')
+      .update({ ...patch, updated_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteInvoice(id: string): Promise<void> {
+    // invoice_services cascade-deletes with the invoice row.
+    // The linked finance_entries row is left intact (FK is SET NULL)
+    // so historical revenue numbers don't disappear; the admin can
+    // manually delete the orphaned finance entry if they want.
+    const { error } = await supabase!.from('invoices').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- invoice_services ---------- */
+  async listInvoiceServices(invoiceId: string): Promise<InvoiceService[]> {
+    const { data, error } = await supabase!.from('invoice_services')
+      .select('*').eq('invoice_id', invoiceId).order('position', { ascending: true })
+    if (error) throw error
+    return (data || []) as InvoiceService[]
+  },
+
+  async createInvoiceService(s: {
+    invoice_id: string
+    name: string
+    description?: string
+    quantity?: number
+    unit_price: number
+    position?: number
+  }): Promise<void> {
+    const { error } = await supabase!.from('invoice_services').insert({
+      invoice_id: s.invoice_id,
+      name: s.name,
+      description: s.description ?? '',
+      quantity: s.quantity ?? 1,
+      unit_price: s.unit_price,
+      position: s.position ?? 0,
+    })
+    if (error) throw error
+  },
+
+  async updateInvoiceService(id: string, patch: Partial<{
+    name: string
+    description: string
+    quantity: number
+    unit_price: number
+    position: number
+  }>): Promise<void> {
+    const { error } = await supabase!.from('invoice_services')
+      .update(patch).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteInvoiceService(id: string): Promise<void> {
+    const { error } = await supabase!.from('invoice_services').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /** Replace all line items on an invoice in one shot — used by the
+   *  invoice editor so the admin can add/remove/reorder freely. */
+  async setInvoiceServices(invoiceId: string, services: Array<{
+    name: string
+    description?: string
+    quantity?: number
+    unit_price: number
+  }>): Promise<void> {
+    // Wipe + insert — simplest correct approach for an admin editor.
+    const { error: dErr } = await supabase!.from('invoice_services')
+      .delete().eq('invoice_id', invoiceId)
+    if (dErr) throw dErr
+    if (services.length === 0) return
+    const rows = services.map((s, i) => ({
+      invoice_id: invoiceId,
+      name: s.name,
+      description: s.description ?? '',
+      quantity: s.quantity ?? 1,
+      unit_price: s.unit_price,
+      position: i,
+    }))
+    const { error } = await supabase!.from('invoice_services').insert(rows as never)
+    if (error) throw error
+  },
+
+  /** Next sequential invoice number in the CC-INV-YYYY-NNNN format.
+   *  Reads the highest existing number for the current year and
+   *  increments by 1.  Not race-safe but the admin is the only writer. */
+  async nextInvoiceNumber(): Promise<string> {
+    const year = new Date().getFullYear()
+    const prefix = `CC-INV-${year}-`
+    const { data, error } = await supabase!.from('invoices')
+      .select('number')
+      .like('number', `${prefix}%`)
+      .order('number', { ascending: false })
+      .limit(1)
+    if (error) {
+      // Fall back to 0001 — better than blocking invoice creation.
+      return `${prefix}0001`
+    }
+    const last = (data || [])[0]?.number as string | undefined
+    if (!last) return `${prefix}0001`
+    const seqStr = last.replace(prefix, '')
+    const seq = parseInt(seqStr, 10) || 0
+    return `${prefix}${String(seq + 1).padStart(4, '0')}`
   },
 }

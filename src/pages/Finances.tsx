@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
-  TrendingUp, TrendingDown, Wallet, Scale, Plus, Printer, Trash2, X,
-  ShoppingBag, Receipt, FileText, ArrowLeft, Briefcase,
+  TrendingUp, TrendingDown, Wallet, Scale, Plus, Printer, Trash2, X, Pencil,
+  ShoppingBag, Receipt, FileText, ArrowLeft, Briefcase, Calculator, FileText as InvoiceIcon,
 } from 'lucide-react'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
@@ -18,6 +18,7 @@ import { useToast } from '../context/ToastContext'
 import { openContextMenu, type CtxItem } from '../components/ui/ContextMenu'
 import { useAuth } from '../context/AuthContext'
 import { FormalBalanceSheetDocument } from '../components/FormalBalanceSheetDocument'
+import { InvoicesTab } from '../components/InvoicesTab'
 import {
   FINANCE_CATEGORY_META,
   FINANCE_REVENUE_CATEGORIES,
@@ -30,6 +31,7 @@ import { eur, eurFull, dateShort, dateLong } from '../lib/format'
 /* Helpers                                                            */
 /* ------------------------------------------------------------------ */
 type PeriodPreset = 'month' | 'quarter' | 'year' | 'all' | 'custom'
+type SubTab = 'finance' | 'invoices'
 
 const NOW = new Date()
 
@@ -81,6 +83,7 @@ export default function Finances() {
     return { entries, deals: deals as Deal[] }
   }, [user?.id])
 
+  const [subtab, setSubtab] = useState<SubTab>('finance')
   const [preset, setPreset] = useState<PeriodPreset>('month')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -89,6 +92,11 @@ export default function Finances() {
   const [printOpen, setPrintOpen] = useState(false)
   const [revSeed, setRevSeed] = useState<EntrySeed | null>(null)
   const [costSeed, setCostSeed] = useState<EntrySeed | null>(null)
+  // Edit-existing-entry modal (revenue or cost).
+  const [editTarget, setEditTarget] = useState<FinanceEntry | null>(null)
+  // Bumped when invoices change so the finance list re-syncs (a
+  // newly-paid invoice creates a revenue row).
+  const [invoiceRefreshKey, setInvoiceRefreshKey] = useState(0)
 
   /* When preset changes, update the date range */
   useEffect(() => {
@@ -147,6 +155,8 @@ export default function Finances() {
       items.push({ label: 'Go to deal', icon: <ArrowLeft size={15} strokeWidth={1.75} />, onClick: () => navigate(`/deals/${e.deal_id}`) })
       items.push({ divider: true })
     }
+    items.push({ label: 'Edit entry', icon: <Pencil size={15} strokeWidth={1.75} />, onClick: () => setEditTarget(e) })
+    items.push({ divider: true })
     items.push({ label: 'Delete entry', icon: <Trash2 size={15} strokeWidth={1.75} />, danger: true, onClick: () => deleteEntry(e.id) })
     return items
   }
@@ -159,20 +169,43 @@ export default function Finances() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4 no-print">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Finances</h1>
-          <p className="mt-1 text-sm text-ink-400">Track revenue and costs across the platform. Generate printable balance sheets.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" icon={<Printer size={15} strokeWidth={1.75} />} onClick={() => setPrintOpen(true)}>
-            Print balance sheet
-          </Button>
-          <Button variant="secondary" icon={<TrendingDown size={15} strokeWidth={1.75} />} onClick={() => setCostOpen(true)}>
-            Add cost
-          </Button>
-          <Button icon={<TrendingUp size={15} strokeWidth={1.75} />} onClick={() => setRevOpen(true)}>
-            Add revenue
-          </Button>
+          <p className="mt-1 text-sm text-ink-400">Track revenue, costs, and invoices across the platform.</p>
         </div>
       </div>
+
+      {/* Subtabs — Finance | Invoices */}
+      <div className="mb-5 flex gap-1 rounded-xl border border-line bg-surface p-1 w-fit no-print">
+        <button
+          onClick={() => setSubtab('finance')}
+          className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${subtab === 'finance' ? 'text-white' : 'text-ink-500 hover:text-ink'}`}
+        >
+          {subtab === 'finance' && <motion.span layoutId="fin-subtab" className="absolute inset-0 rounded-lg bg-ink" transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} />}
+          <span className="relative flex items-center gap-1.5"><Calculator size={15} strokeWidth={1.75} />Finance</span>
+        </button>
+        <button
+          onClick={() => setSubtab('invoices')}
+          className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${subtab === 'invoices' ? 'text-white' : 'text-ink-500 hover:text-ink'}`}
+        >
+          {subtab === 'invoices' && <motion.span layoutId="fin-subtab" className="absolute inset-0 rounded-lg bg-ink" transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} />}
+          <span className="relative flex items-center gap-1.5"><InvoiceIcon size={15} strokeWidth={1.75} />Invoices</span>
+        </button>
+      </div>
+
+      {subtab === 'finance' && (
+        <>
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-4 no-print">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" icon={<Printer size={15} strokeWidth={1.75} />} onClick={() => setPrintOpen(true)}>
+              Print balance sheet
+            </Button>
+            <Button variant="secondary" icon={<TrendingDown size={15} strokeWidth={1.75} />} onClick={() => setCostOpen(true)}>
+              Add cost
+            </Button>
+            <Button icon={<TrendingUp size={15} strokeWidth={1.75} />} onClick={() => setRevOpen(true)}>
+              Add revenue
+            </Button>
+          </div>
+        </div>
 
       {/* Period filter */}
       <Card className="mb-5 no-print">
@@ -313,11 +346,18 @@ export default function Finances() {
                   <p className="truncate text-sm font-medium">{e.title || FINANCE_CATEGORY_META[e.category].label}</p>
                   {e.description && <p className="truncate text-2xs text-ink-400">{e.description}</p>}
                 </div>
-                <Badge tone="neutral" className="capitalize">{FINANCE_CATEGORY_META[e.category].label}</Badge>
-                <span className="text-2xs text-ink-400 w-20 text-right">{dateShort(e.entry_date)}</span>
-                <span className="num w-24 text-right text-sm font-semibold text-pos">+{eurFull(e.amount)}</span>
-              </div>
-            ))}
+                    <Badge tone="neutral" className="capitalize">{FINANCE_CATEGORY_META[e.category].label}</Badge>
+                    <span className="text-2xs text-ink-400 w-20 text-right">{dateShort(e.entry_date)}</span>
+                    <span className="num w-24 text-right text-sm font-semibold text-pos">+{eurFull(e.amount)}</span>
+                    <button
+                      onClick={() => setEditTarget(e)}
+                      title="Edit"
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-ink-100 hover:text-ink-600"
+                    >
+                      <Pencil size={13} strokeWidth={1.75} />
+                    </button>
+                  </div>
+                ))}
           </div>
         )}
       </Card>
@@ -346,11 +386,18 @@ export default function Finances() {
                   <p className="truncate text-sm font-medium">{e.title || FINANCE_CATEGORY_META[e.category].label}</p>
                   {e.description && <p className="truncate text-2xs text-ink-400">{e.description}</p>}
                 </div>
-                <Badge tone="neutral" className="capitalize">{FINANCE_CATEGORY_META[e.category].label}</Badge>
-                <span className="text-2xs text-ink-400 w-20 text-right">{dateShort(e.entry_date)}</span>
-                <span className="num w-24 text-right text-sm font-semibold text-neg">−{eurFull(e.amount)}</span>
-              </div>
-            ))}
+                    <Badge tone="neutral" className="capitalize">{FINANCE_CATEGORY_META[e.category].label}</Badge>
+                    <span className="text-2xs text-ink-400 w-20 text-right">{dateShort(e.entry_date)}</span>
+                    <span className="num w-24 text-right text-sm font-semibold text-neg">−{eurFull(e.amount)}</span>
+                    <button
+                      onClick={() => setEditTarget(e)}
+                      title="Edit"
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-ink-100 hover:text-ink-600"
+                    >
+                      <Pencil size={13} strokeWidth={1.75} />
+                    </button>
+                  </div>
+                ))}
           </div>
         )}
       </Card>
@@ -369,6 +416,12 @@ export default function Finances() {
         kind="cost"
         seed={costSeed}
         onSaved={reload}
+      />
+      <EditFinanceModal
+        open={!!editTarget}
+        entry={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={() => { setEditTarget(null); reload() }}
       />
 
       {/* Print preview / balance sheet (on-screen friendly view; the
@@ -395,6 +448,20 @@ export default function Finances() {
         toDate={toDate}
         dealMap={dealMap}
       />
+      </>
+      )}
+
+      {subtab === 'invoices' && (
+        <InvoicesTab
+          refreshKey={invoiceRefreshKey}
+          onInvoicesChanged={() => {
+            // Bump the key so the InvoicesTab reloads, AND reload the
+            // finance entries so the new revenue row shows up.
+            setInvoiceRefreshKey((k) => k + 1)
+            reload()
+          }}
+        />
+      )}
     </PageContainer>
   )
 }
@@ -560,6 +627,115 @@ function AddFinanceModal({
         <div className="grid grid-cols-2 gap-4">
           <Field label="Amount (€)" required>
             <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+          </Field>
+          <Field label="Date" required>
+            <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+          </Field>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Edit finance entry modal — pre-fills all fields from the entry.
+   Lets the admin fix a mistake (wrong amount, wrong category, wrong
+   title, wrong date) without deleting and re-creating.                */
+/* ------------------------------------------------------------------ */
+function EditFinanceModal({
+  open, entry, onClose, onSaved,
+}: {
+  open: boolean
+  entry: FinanceEntry | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { push } = useToast()
+  const [kind, setKind] = useState<FinanceKind>('revenue')
+  const [category, setCategory] = useState<FinanceCategory | ''>('')
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [amount, setAmount] = useState('')
+  const [entryDate, setEntryDate] = useState(toISODate(new Date()))
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    if (entry) {
+      setKind(entry.kind)
+      setCategory(entry.category)
+      setTitle(entry.title)
+      setDescription(entry.description)
+      setAmount(String(entry.amount))
+      setEntryDate(entry.entry_date)
+    }
+  }, [open, entry])
+
+  const cats = kind === 'revenue' ? FINANCE_REVENUE_CATEGORIES : FINANCE_COST_CATEGORIES
+  const canSave = !!entry && category !== '' && Number(amount) > 0 && !saving
+
+  async function submit() {
+    if (!entry || !category || !amount) return
+    setSaving(true)
+    try {
+      await db.updateFinanceEntry(entry.id, {
+        kind,
+        category: category as FinanceCategory,
+        title: title.trim(),
+        description: description.trim(),
+        amount: Number(amount),
+        entry_date: entryDate,
+      })
+      push({ tone: 'success', title: 'Entry updated' })
+      onSaved()
+      onClose()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not save', desc: e?.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!entry) return null
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Edit ${kind === 'revenue' ? 'revenue' : 'cost'} entry`}
+      desc="Update the category, title, description, amount or date. Useful for fixing mistakes."
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button icon={<Pencil size={14} strokeWidth={1.75} />} disabled={!canSave} onClick={submit}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Kind">
+          <Select value={kind} onChange={(e) => setKind(e.target.value as FinanceKind)}>
+            <option value="revenue">Revenue</option>
+            <option value="cost">Cost</option>
+          </Select>
+        </Field>
+        <Field label="Category" required>
+          <Select value={category} onChange={(e) => setCategory(e.target.value as FinanceCategory)}>
+            <option value="">Select category…</option>
+            {cats.map((c) => <option key={c} value={c}>{FINANCE_CATEGORY_META[c].label}</option>)}
+          </Select>
+        </Field>
+        <Field label="Title">
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+        </Field>
+        <Field label="Description" hint="Optional notes">
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Amount (€)" required>
+            <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
           <Field label="Date" required>
             <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />

@@ -30,6 +30,12 @@ interface Props {
   /** Set to true to receive an ISO string from onChange instead of a
    *  local datetime-local string. */
   outputIso?: boolean
+  /** Date-only picker — hides the time picker section and the time
+   *  portion of the trigger label.  Output is a "YYYY-MM-DD" string
+   *  (or an ISO date string when outputIso is true).  Used by the
+   *  invoice editor for issue / due dates so we keep the platform UI
+   *  consistent with the meeting calendar. */
+  dateOnly?: boolean
 }
 
 /**
@@ -40,8 +46,12 @@ interface Props {
  *   - a small list of common time slots + a free text time
  *
  * The button shows the current selection as a friendly label.
+ *
+ * `dateOnly` collapses the time picker section entirely so it reads
+ * as a clean date-only picker (same UI as the calendar), useful for
+ * invoices / due dates / expiry dates.
  */
-export function DateTimePicker({ value, onChange, disabled, outputIso = true }: Props) {
+export function DateTimePicker({ value, onChange, disabled, outputIso = true, dateOnly = false }: Props) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState(() => {
     const d = parseLocalInput(value) || new Date()
@@ -74,8 +84,11 @@ export function DateTimePicker({ value, onChange, disabled, outputIso = true }: 
   }
 
   function commit(d: Date) {
-    if (outputIso) onChange(d.toISOString())
-    else onChange(toLocalInput(d))
+    if (outputIso) {
+      onChange(dateOnly ? d.toISOString().slice(0, 10) : d.toISOString())
+    } else {
+      onChange(dateOnly ? toLocalDateOnly(d) : toLocalInput(d))
+    }
   }
 
   const grid = useMemo(() => buildMonthGrid(view.getFullYear(), view.getMonth()), [view])
@@ -84,7 +97,9 @@ export function DateTimePicker({ value, onChange, disabled, outputIso = true }: 
   function nextMonth() { setView(new Date(view.getFullYear(), view.getMonth() + 1, 1)) }
 
   const today = new Date()
-  const label = current.toLocaleString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  const label = dateOnly
+    ? current.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+    : current.toLocaleString('en-IE', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
   return (
     <div className="relative" ref={ref}>
@@ -96,7 +111,7 @@ export function DateTimePicker({ value, onChange, disabled, outputIso = true }: 
       >
         <CalIcon size={15} strokeWidth={1.75} className="text-ink-400" />
         <span className="flex-1 text-left">{label}</span>
-        <Clock size={13} strokeWidth={1.75} className="text-ink-300" />
+        {!dateOnly && <Clock size={13} strokeWidth={1.75} className="text-ink-300" />}
       </button>
 
       <AnimatePresence>
@@ -149,47 +164,55 @@ export function DateTimePicker({ value, onChange, disabled, outputIso = true }: 
               })}
             </div>
 
-            {/* Time picker */}
-            <div className="mt-3 border-t border-line pt-3">
-              <div className="mb-1.5 flex items-center gap-1.5 text-2xs font-medium uppercase text-ink-400">
-                <Clock size={11} strokeWidth={1.75} /> Time
+            {/* Time picker — hidden in dateOnly mode */}
+            {!dateOnly && (
+              <div className="mt-3 border-t border-line pt-3">
+                <div className="mb-1.5 flex items-center gap-1.5 text-2xs font-medium uppercase text-ink-400">
+                  <Clock size={11} strokeWidth={1.75} /> Time
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {TIME_SLOTS.map((t) => {
+                    const [h, m] = t.split(':').map(Number)
+                    const active = h === current.getHours() && m === current.getMinutes()
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => pickTime(h, m)}
+                        className={`rounded-lg py-1.5 text-2xs font-medium transition-colors ${
+                          active ? 'bg-ink text-white' : 'bg-ink-50 text-ink-600 hover:bg-ink-100'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <label className="text-2xs text-ink-400">Custom:</label>
+                  <input
+                    type="time"
+                    value={currentTime}
+                    onChange={(e) => {
+                      const [h, m] = e.target.value.split(':').map(Number)
+                      if (!isNaN(h) && !isNaN(m)) pickTime(h, m)
+                    }}
+                    className="h-8 flex-1 rounded-lg border border-line bg-surface px-2 text-2xs text-ink focus:outline-none focus:border-ink"
+                  />
+                </div>
               </div>
-              <div className="grid grid-cols-4 gap-1">
-                {TIME_SLOTS.map((t) => {
-                  const [h, m] = t.split(':').map(Number)
-                  const active = h === current.getHours() && m === current.getMinutes()
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => pickTime(h, m)}
-                      className={`rounded-lg py-1.5 text-2xs font-medium transition-colors ${
-                        active ? 'bg-ink text-white' : 'bg-ink-50 text-ink-600 hover:bg-ink-100'
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <label className="text-2xs text-ink-400">Custom:</label>
-                <input
-                  type="time"
-                  value={currentTime}
-                  onChange={(e) => {
-                    const [h, m] = e.target.value.split(':').map(Number)
-                    if (!isNaN(h) && !isNaN(m)) pickTime(h, m)
-                  }}
-                  className="h-8 flex-1 rounded-lg border border-line bg-surface px-2 text-2xs text-ink focus:outline-none focus:border-ink"
-                />
-              </div>
-            </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   )
+}
+
+/** Convert a Date to YYYY-MM-DD in the user's local timezone (no time). */
+function toLocalDateOnly(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 /* 15-minute slots from 08:00 to 20:00 */
