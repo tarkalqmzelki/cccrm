@@ -91,14 +91,15 @@ export function FormalInvoiceDocument({
       style={{
         fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
         color: '#111',
-        width: '210mm',
-        minHeight: '297mm',
-        margin: '0 auto',
-        // Slightly tighter side margins (6mm) so the content fills
-        // the full usable width; bottom padding keeps the fixed
-        // footer from overlapping content.
-        padding: '6mm 6mm 12mm 6mm',
-        // Bumped base font from 8pt → 10pt per spec (+2pt).
+        // width: 100% fills the @page printable area (196mm with 7mm
+        // side margins).  No fixed height — content flows naturally
+        // across pages so a long invoice (many services, long legal
+        // notes) never overlaps the footer.
+        width: '100%',
+        // No padding — the @page margins (8mm top, 7mm sides, 14mm
+        // bottom) provide the page margins.  The fixed footer lives
+        // in the 14mm bottom margin and repeats on every page.
+        padding: 0,
         fontSize: '10pt',
         lineHeight: 1.4,
         boxSizing: 'border-box',
@@ -270,8 +271,9 @@ export function FormalInvoiceDocument({
 
       {/* ============================================================ */}
       {/* 8. TAX SUMMARY — right-aligned compact block                  */}
+      {/*     page-break-inside: avoid so the totals never split        */}
       {/* ============================================================ */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2.5mm' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2.5mm', pageBreakInside: 'avoid' }}>
         <table style={{ borderCollapse: 'collapse', fontSize: '9.5pt', width: '55%' }}>
           <tbody>
             <tr>
@@ -302,7 +304,7 @@ export function FormalInvoiceDocument({
       {/* ============================================================ */}
       {/* 9. BARCODE — reference fingerprint                             */}
       {/* ============================================================ */}
-      <div style={{ marginTop: '3mm', display: 'flex', alignItems: 'center', gap: '4mm', borderTop: '0.25pt solid #000', borderBottom: '0.25pt solid #000', padding: '1.5mm 0' }}>
+      <div style={{ marginTop: '3mm', display: 'flex', alignItems: 'center', gap: '4mm', borderTop: '0.25pt solid #000', borderBottom: '0.25pt solid #000', padding: '1.5mm 0', pageBreakInside: 'avoid' }}>
         <div style={{ flex: '0 0 auto' }}>
           <p style={{ margin: '0', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase', fontWeight: 700 }}>Reference barcode</p>
           <p style={{ margin: '0.5pt 0 0', fontSize: '7pt', color: '#666' }}>Cross-reference for the digital ledger</p>
@@ -319,9 +321,10 @@ export function FormalInvoiceDocument({
 
       {/* ============================================================ */}
       {/* 10. PAYMENT / BANK DETAILS — optional                          */}
+      {/*     page-break-inside: avoid so the block stays together       */}
       {/* ============================================================ */}
       {extras.bank && hasAnyText(extras.bank) && (
-        <div style={{ marginTop: '3mm' }}>
+        <div style={{ marginTop: '3mm', pageBreakInside: 'avoid' }}>
           <SectionHeader>PAYMENT INFORMATION</SectionHeader>
           <div style={{ display: 'flex', gap: '6mm', borderTop: '0.25pt solid #000', paddingTop: '1.5mm', fontSize: '9.5pt' }}>
             <div style={{ flex: 1 }}>
@@ -357,17 +360,20 @@ export function FormalInvoiceDocument({
 
       {/* ============================================================ */}
       {/* 12. SIGNATURE AREAS                                           */}
+      {/*     page-break-inside: avoid so the signature block stays       */}
+      {/*     together on one page                                       */}
       {/* ============================================================ */}
-      <div style={{ marginTop: '4mm', display: 'flex', justifyContent: 'space-between', gap: '8mm' }}>
+      <div style={{ marginTop: '4mm', display: 'flex', justifyContent: 'space-between', gap: '8mm', pageBreakInside: 'avoid' }}>
         <SignBlock role="Issued by" name={extras.signature_issued_by} date={dateShort(invoice.issue_date)} />
         <SignBlock role="Received by" name="" date="" />
       </div>
 
       {/* ============================================================ */}
       {/* 13. SECONDARY SECTION — optional                               */}
+      {/*     page-break-inside: avoid so the block stays together       */}
       {/* ============================================================ */}
       {extras.secondary_section && extras.secondary_section.content.trim() && (
-        <div style={{ marginTop: '4mm', borderTop: '0.5pt solid #000', paddingTop: '2mm' }}>
+        <div style={{ marginTop: '4mm', borderTop: '0.5pt solid #000', paddingTop: '2mm', pageBreakInside: 'avoid' }}>
           <div style={{ background: '#E7E7E7', fontSize: '8.5pt', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '1mm 2mm', marginBottom: '1.5mm' }}>
             {extras.secondary_section.type}
           </div>
@@ -379,14 +385,14 @@ export function FormalInvoiceDocument({
 
       {/* ============================================================ */}
       {/* 14. FOOTER — repeats on every printed page (position: fixed)   */}
-      {/*      Removed the "https://calistaconcept.eu" link per spec;    */}
-      {/*      replaced with "Copyright Calista Concept".                */}
+      {/*      Aligned with the 7mm @page side margins. The 14mm bottom  */}
+      {/*      @page margin reserves space so content never overlaps.    */}
       {/* ============================================================ */}
       <div style={{
         position: 'fixed',
-        bottom: '3mm',
-        left: '6mm',
-        right: '6mm',
+        bottom: '2mm',
+        left: '7mm',
+        right: '7mm',
         borderTop: '0.5pt solid #000',
         paddingTop: '1.5mm',
         fontSize: '7.5pt',
@@ -420,6 +426,10 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
       textTransform: 'uppercase',
       color: '#000',
       fontWeight: 700,
+      // Keep the header with the content that follows — don't let a
+      // header sit alone at the bottom of a page with its content
+      // pushed to the next page.
+      pageBreakAfter: 'avoid',
     }}>
       {children}
     </p>

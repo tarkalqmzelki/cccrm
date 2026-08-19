@@ -243,10 +243,12 @@ body {
     display: none !important;
   }
 
-  /* Page setup — A4/Letter, narrow margins, no header/footer chrome */
+  /* Page setup — A4, tight print-safe margins per invoice spec:
+     8mm top, 7mm sides (gives ~196mm content width), 14mm bottom
+     (reserves space for the fixed footer on every printed page). */
   @page {
     size: A4;
-    margin: 18mm 16mm 20mm 16mm;
+    margin: 8mm 7mm 14mm 7mm;
   }
 
   /* Generic clean card look used inside the formal document */
