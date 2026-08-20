@@ -41,50 +41,32 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
     : ''
 
   return createPortal(
-    <>
-      {/* While this contract document is mounted, override the print
-          page margins.  The fixed letterhead (logo + barcode) occupies
-          ~2–15mm from the paper top and the fixed footer ~2–11mm from
-          the bottom on EVERY printed page — the default 8mm/14mm
-          margins let the template text run under them.  A plain
-          `@page` override (no named pages — flaky in some browsers)
-          keeps the content clear of both bands.  Scoped to @media
-          print so the on-screen preview is unaffected, and removed
-          automatically when this component unmounts — invoices and
-          the balance sheet keep their own margins. */}
-      <style>{'@media print { @page { margin: 20mm 7mm 16mm 7mm; } }'}</style>
-      <div
-        className="print-document print-only"
-        style={{
-          fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
-          color: '#000',
-          width: '100%',
-          padding: 0,
-          fontSize: '11pt',
-          lineHeight: 1.55,
-          boxSizing: 'border-box',
-          background: '#fff',
-          position: 'relative',
-        }}
-      >
+    <div
+      className="print-document print-only"
+      style={{
+        fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
+        color: '#000',
+        width: '100%',
+        padding: 0,
+        fontSize: '11pt',
+        lineHeight: 1.55,
+        boxSizing: 'border-box',
+        background: '#fff',
+      }}
+    >
       {/* ============================================================ */}
-      {/* FIXED HEADER — repeats on every printed page                  */}
-      {/* Logo on page 1 only is tricky with pure CSS; we put the logo  */}
-      {/* in the fixed header and use `display: block` — it shows on    */}
-      {/* every page, which is acceptable for a corporate document       */}
-      {/* (letterhead style).  The barcode is always present.           */}
+      {/* LETTERHEAD — logo + barcode.  Part of the NORMAL flow (not    */}
+      {/* position: fixed — that was causing overlaps in every browser  */}
+      {/* because print engines position fixed elements differently).  */}
+      {/* Sits at the top of page 1, content flows after it.             */}
       {/* ============================================================ */}
       <div style={{
-        position: 'fixed',
-        top: '2mm',
-        left: '7mm',
-        right: '7mm',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
         borderBottom: '0.5pt solid #000',
-        paddingBottom: '2mm',
-        zIndex: 10,
+        paddingBottom: '3mm',
+        marginBottom: '6mm',
       }}>
         {/* Left: logo + company name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '3mm' }}>
@@ -108,11 +90,9 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
       </div>
 
       {/* ============================================================ */}
-      {/* CONTENT — the @page cccontract top margin (20mm) already       */}
-      {/* reserves space for the fixed letterhead on EVERY page, so     */}
-      {/* the content just flows from the top of the content area.      */}
+      {/* CONTENT — title, parties, template body, signatures           */}
       {/* ============================================================ */}
-      <div style={{ paddingTop: '2mm' }}>
+      <div>
         {/* ========================================================== */}
         {/* TITLE BLOCK — first page only                               */}
         {/* ========================================================== */}
@@ -205,16 +185,15 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
       </div>
 
       {/* ============================================================ */}
-      {/* FOOTER — repeats on every printed page                         */}
+      {/* FOOTER — normal flow (bottom of the document).  No position:   */}
+      {/* fixed — that was causing the overlap.  Sits after the          */}
+      {/* signature block.                                              */}
       {/* ============================================================ */}
       <div style={{
-        position: 'fixed',
-        bottom: '2mm',
-        left: '7mm',
-        right: '7mm',
+        marginTop: '10mm',
         borderTop: '0.5pt solid #000',
-        paddingTop: '1.5mm',
-        fontSize: '7pt',
+        paddingTop: '2mm',
+        fontSize: '7.5pt',
         color: '#555',
         lineHeight: 1.4,
       }}>
@@ -227,8 +206,7 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
           <span>{settings.company_vat ? `VAT: ${settings.company_vat}` : ''}</span>
         </div>
       </div>
-      </div>
-    </>,
+    </div>,
     document.body,
   )
 }
