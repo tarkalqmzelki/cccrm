@@ -13,6 +13,7 @@ import type {
   ContractTemplateVariant, DesignSettings,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
+import type { LanguageTranslations } from './translations'
 
 const iso = () => new Date().toISOString()
 
@@ -1728,6 +1729,37 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     delete payload.id
     const { error } = await supabase!.from('design_settings')
       .update(payload).eq('id', 1)
+    if (error) throw error
+  },
+
+  /* ================================================================== */
+  /* LANGUAGE TRANSLATIONS                                                */
+  /* ================================================================== */
+
+  async listLanguageTranslations(): Promise<LanguageTranslations[]> {
+    const { data, error } = await supabase!.from('language_translations')
+      .select('*').order('language', { ascending: true })
+    if (error) throw error
+    return (data || []) as LanguageTranslations[]
+  },
+
+  async createLanguageTranslation(l: { language: string; language_label: string; translations: Record<string, string> }): Promise<void> {
+    const { error } = await supabase!.from('language_translations').insert({
+      language: l.language,
+      language_label: l.language_label,
+      translations: l.translations,
+    })
+    if (error) throw error
+  },
+
+  async updateLanguageTranslation(id: string, patch: Partial<{ language: string; language_label: string; translations: Record<string, string> }>): Promise<void> {
+    const { error } = await supabase!.from('language_translations')
+      .update({ ...patch, updated_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteLanguageTranslation(id: string): Promise<void> {
+    const { error } = await supabase!.from('language_translations').delete().eq('id', id)
     if (error) throw error
   },
 }

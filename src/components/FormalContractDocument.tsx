@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { Contract, ContractTemplate, InvoiceSettings } from '../lib/types'
 import { CONTRACT_PLACEHOLDERS } from '../lib/types'
 import { parseContractNotes } from '../lib/contractExtras'
+import { makeT, ENGLISH_TRANSLATIONS, type TFn } from '../lib/translations'
 import { dateLong, dateShort } from '../lib/format'
 
 const LOGO_URL = 'https://kappa.lol/FAHnNi'
@@ -12,6 +13,8 @@ interface Props {
   contract: Contract
   template: ContractTemplate | null
   settings: InvoiceSettings
+  /** Translation map for the selected language (null = English). */
+  translations?: Record<string, string> | null
 }
 
 /**
@@ -32,8 +35,10 @@ interface Props {
  *   - Multi-page: content flows naturally; the barcode is in a
  *     `position: fixed` header that repeats on every printed page
  */
-export function FormalContractDocument({ contract, template, settings }: Props) {
+export function FormalContractDocument({ contract, template, settings, translations }: Props) {
   const barcodeBars = buildBarcodeBars(contract.number)
+  // Translation resolver — falls back to English for missing keys
+  const t = makeT(translations)
 
   // Fill template placeholders with real data
   const filledBody = template
@@ -98,13 +103,13 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
         {/* ========================================================== */}
         <div style={{ textAlign: 'center', marginBottom: '8mm', paddingBottom: '4mm', borderBottom: '0.5pt solid #000' }}>
           <p style={{ margin: '0 0 1mm', fontSize: '8pt', letterSpacing: '0.2em', color: '#444', textTransform: 'uppercase' }}>
-            {template?.name || 'CONTRACT'}
+            {template?.name || t('doc.contract')}
           </p>
           <h1 style={{ margin: 0, fontSize: '14pt', fontWeight: 700, letterSpacing: '0.04em' }}>
-            {template?.name || 'AGREEMENT'}
+            {template?.name || t('doc.contract')}
           </h1>
           <p style={{ margin: '2mm 0 0', fontSize: '9pt', color: '#555', fontVariantNumeric: 'tabular-nums' }}>
-            Contract No. {contract.number} · Issued {dateLong(contract.issue_date)}
+            {t('ctr.contract_no')} {contract.number} · {t('ctr.issued')} {dateLong(contract.issue_date)}
           </p>
         </div>
 
@@ -113,26 +118,26 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
         {/* ========================================================== */}
         <div style={{ display: 'flex', gap: '0', marginBottom: '8mm' }}>
           <div style={{ flex: 1, paddingRight: '5mm', borderRight: '0.25pt solid #000' }}>
-            <p style={{ margin: '0 0 2mm', fontSize: '8pt', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#333' }}>Between — Issuer</p>
+            <p style={{ margin: '0 0 2mm', fontSize: '8pt', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#333' }}>{t('party.issuer')}</p>
             <div style={{ fontSize: '10pt', lineHeight: 1.5 }}>
               <p style={{ margin: '0 0 1pt', fontWeight: 700 }}>{settings.company_name}</p>
               <p style={{ margin: '0 0 1pt', color: '#444', fontSize: '9pt' }}>{settings.company_subname}</p>
               {settings.company_address && <p style={{ margin: '0 0 1pt', color: '#444' }}>{settings.company_address}</p>}
               {settings.company_email && <p style={{ margin: '0 0 1pt', color: '#444' }}>{settings.company_email}</p>}
-              {settings.company_phone && <p style={{ margin: '0 0 1pt', color: '#444' }}>Tel: {settings.company_phone}</p>}
-              {settings.company_vat && <p style={{ margin: '0 0 1pt', color: '#444' }}>VAT: {settings.company_vat}</p>}
-              {settings.company_id && <p style={{ margin: '0', color: '#444' }}>Reg. No: {settings.company_id}</p>}
+              {settings.company_phone && <p style={{ margin: '0 0 1pt', color: '#444' }}>{t('party.tel')} {settings.company_phone}</p>}
+              {settings.company_vat && <p style={{ margin: '0 0 1pt', color: '#444' }}>{t('party.vat_id')}: {settings.company_vat}</p>}
+              {settings.company_id && <p style={{ margin: '0', color: '#444' }}>{t('party.company_id')}: {settings.company_id}</p>}
             </div>
           </div>
           <div style={{ flex: 1, paddingLeft: '5mm' }}>
-            <p style={{ margin: '0 0 2mm', fontSize: '8pt', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#333' }}>And — Counterparty</p>
+            <p style={{ margin: '0 0 2mm', fontSize: '8pt', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#333' }}>{t('party.counterparty')}</p>
             <div style={{ fontSize: '10pt', lineHeight: 1.5 }}>
               <p style={{ margin: '0 0 1pt', fontWeight: 700 }}>{contract.counterparty_name}</p>
               {contract.counterparty_company && <p style={{ margin: '0 0 1pt', color: '#444' }}>{contract.counterparty_company}</p>}
               {contract.counterparty_address && <p style={{ margin: '0 0 1pt', color: '#444' }}>{contract.counterparty_address}</p>}
-              {contract.counterparty_phone && <p style={{ margin: '0 0 1pt', color: '#444' }}>Tel: {contract.counterparty_phone}</p>}
+              {contract.counterparty_phone && <p style={{ margin: '0 0 1pt', color: '#444' }}>{t('party.tel')} {contract.counterparty_phone}</p>}
               {contract.counterparty_email && <p style={{ margin: '0 0 1pt', color: '#444' }}>{contract.counterparty_email}</p>}
-              {contract.counterparty_vat && <p style={{ margin: '0', color: '#444' }}>VAT: {contract.counterparty_vat}</p>}
+              {contract.counterparty_vat && <p style={{ margin: '0', color: '#444' }}>{t('party.vat_id')}: {contract.counterparty_vat}</p>}
             </div>
           </div>
         </div>
@@ -143,13 +148,13 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
         <div style={{ marginBottom: '8mm', fontSize: '9.5pt' }}>
           {contract.start_date && (
             <p style={{ margin: '0 0 1pt' }}>
-              <strong>Effective from:</strong> {dateLong(contract.start_date)}
-              {contract.end_date ? ` through ${dateLong(contract.end_date)}` : ' until terminated'}
+              <strong>{t('ctr.effective_from')}</strong> {dateLong(contract.start_date)}
+              {contract.end_date ? ` ${t('ctr.through')} ${dateLong(contract.end_date)}` : ` ${t('ctr.until_terminated')}`}
             </p>
           )}
           {!contract.start_date && (
             <p style={{ margin: '0 0 1pt' }}>
-              <strong>Date of agreement:</strong> {dateLong(contract.issue_date)}
+              <strong>{t('ctr.date_of_agreement')}</strong> {dateLong(contract.issue_date)}
             </p>
           )}
         </div>
@@ -163,7 +168,7 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
           </div>
         ) : (
           <div style={{ fontSize: '10pt', color: '#666', fontStyle: 'italic', padding: '10mm 0', textAlign: 'center' }}>
-            No template selected for this contract. Add a template in Settings → Contract Templates.
+            {t('ctr.no_template')}
           </div>
         )}
 
@@ -172,14 +177,16 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
         {/* ========================================================== */}
         <div style={{ marginTop: '14mm', paddingTop: '4mm', borderTop: '0.5pt solid #000', display: 'flex', justifyContent: 'space-between', gap: '10mm', pageBreakInside: 'avoid' }}>
           <SignBlock
-            label={`For ${settings.company_name || 'the Issuer'}`}
+            label={`${t('misc.issued_by')} — ${settings.company_name || ''}`}
             name=""
             date={dateShort(contract.issue_date)}
+            t={t}
           />
           <SignBlock
-            label={'For ' + (contract.counterparty_company || contract.counterparty_name || 'the Counterparty')}
+            label={`${t('misc.received_by')} — ${contract.counterparty_company || contract.counterparty_name || ''}`}
             name={contract.counterparty_name}
             date=""
+            t={t}
           />
         </div>
       </div>
@@ -198,12 +205,12 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
         lineHeight: 1.4,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>© {new Date().getFullYear()} {settings.company_name}. All rights reserved.</span>
-          <span>Document {contract.number} · Printed using CCContractEngine v1.0</span>
+          <span>{t('misc.copyright', { year: String(new Date().getFullYear()), company: settings.company_name })}</span>
+          <span>{t('misc.document')} {contract.number} · {t('misc.printed_using_ctr')}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5pt' }}>
           <span>{settings.company_email}{settings.company_phone ? ` · ${settings.company_phone}` : ''}</span>
-          <span>{settings.company_vat ? `VAT: ${settings.company_vat}` : ''}</span>
+          <span>{settings.company_vat ? `${t('party.vat_id')}: ${settings.company_vat}` : ''}</span>
         </div>
       </div>
     </div>,
@@ -214,15 +221,15 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
 /* ------------------------------------------------------------------ */
 /* Subcomponents                                                       */
 /* ------------------------------------------------------------------ */
-function SignBlock({ label, name, date }: { label: string; name: string; date: string }) {
+function SignBlock({ label, name, date, t }: { label: string; name: string; date: string; t: TFn }) {
   return (
     <div style={{ width: '46%' }}>
       <p style={{ margin: '0 0 1pt', fontSize: '8pt', fontWeight: 700, color: '#333' }}>{label}</p>
       {name && <p style={{ margin: '0 0 12mm', fontSize: '9.5pt', fontWeight: 600 }}>{name}</p>}
       {!name && <p style={{ margin: '0 0 12mm', fontSize: '9pt', color: '#888' }}>________________________</p>}
       <div style={{ borderTop: '0.25pt solid #000', paddingTop: '1mm', fontSize: '8.5pt', display: 'flex', justifyContent: 'space-between' }}>
-        <span>Signature</span>
-        <span>{date || <span style={{ color: '#888' }}>Date: ____________</span>}</span>
+        <span>{t('misc.signature')}</span>
+        <span>{date || <span style={{ color: '#888' }}>{t('misc.date')} ____________</span>}</span>
       </div>
     </div>
   )

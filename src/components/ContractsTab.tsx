@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Printer, Trash2, Eye, FileText, FilePlus2 } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
 import { Card, CardHeader } from './ui/Card'
@@ -13,6 +14,7 @@ import { ContractEditor } from './ContractEditor'
 import { FormalContractDocument } from './FormalContractDocument'
 import { CONTRACT_STATUS_META, DEFAULT_INVOICE_SETTINGS } from '../lib/types'
 import type { Contract, ContractStatus, ContractTemplate, InvoiceSettings, ContractTemplateVariant } from '../lib/types'
+import type { LanguageTranslations } from '../lib/translations'
 import { dateShort } from '../lib/format'
 
 interface Props {
@@ -27,15 +29,17 @@ interface Props {
 export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }: Props) {
   const { push } = useToast()
   const { data, loading, reload } = useAsync(async () => {
-    const [contracts, templates, settings] = await Promise.all([
+    const [contracts, templates, settings, langs] = await Promise.all([
       db.listContracts(),
       db.listContractTemplates(),
       db.getInvoiceSettings(),
+      db.listLanguageTranslations().catch(() => [] as LanguageTranslations[]),
     ])
     return {
       contracts,
       templates: templates as ContractTemplate[],
       settings: (settings || DEFAULT_INVOICE_SETTINGS) as InvoiceSettings,
+      languages: (langs || []) as LanguageTranslations[],
     }
   }, [refreshKey])
 
@@ -44,11 +48,13 @@ export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }
   const [preview, setPreview] = useState<Contract | null>(null)
   const [previewVariants, setPreviewVariants] = useState<ContractTemplateVariant[]>([])
   const [previewVariantId, setPreviewVariantId] = useState('')
+  const [printLang, setPrintLang] = useState('en')
   const [deleteTarget, setDeleteTarget] = useState<Contract | null>(null)
 
   const contracts = data?.contracts || []
   const templates = data?.templates || []
   const settings = data?.settings || DEFAULT_INVOICE_SETTINGS
+  const languages = data?.languages || []
 
   const stats = useMemo(() => {
     const total = contracts.length
@@ -64,6 +70,7 @@ export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }
   async function openPreview(c: Contract) {
     setPreview(c)
     setPreviewVariantId('')
+    setPrintLang('en')
     // Load language variants for the contract's template
     if (c.template_id) {
       try {
@@ -74,6 +81,33 @@ export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }
       setPreviewVariants([])
     }
   }
+
+  /** Pick a print language — switches BOTH the fixed labels (via the
+   *  translations map) AND the template body (by selecting the
+   *  template variant whose language matches, when one exists). */
+  function pickPrintLang(lang: string) {
+    setPrintLang(lang)
+    if (lang === 'en') {
+      setPreviewVariantId('')
+      return
+    }
+    // Find a template variant for this language (e.g. the 'bg' variant)
+    const variant = previewVariants.find((v) => v.language === lang)
+    setPreviewVariantId(variant ? variant.id : '')
+  }
+
+  /** All selectable languages — the union of:
+   *  1. Languages configured in Language Settings (fixed-label translations)
+   *  2. Languages that have a template variant for this contract's template
+   *  Deduplicated by language code.  'en' is always implicitly first. */
+  const availableLangs = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const l of languages) m.set(l.language, l.language_label || l.language)
+    for (const v of previewVariants) {
+      if (!m.has(v.language)) m.set(v.language, v.language_label || v.language)
+    }
+    return Array.from(m.entries()).map(([code, label]) => ({ code, label }))
+  }, [languages, previewVariants])
 
   // The effective template = base template + selected variant's body/placeholders
   const previewTemplate = useMemo(() => {
@@ -215,13 +249,30 @@ export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }
                 <p className="font-mono text-2xs text-ink-500">{preview.number}</p>
               </div>
             </div>
-            {previewVariants.length > 0 && (
+            {availableLangs.length > 0 && (
               <div className="mt-3">
                 <label className="text-2xs uppercase tracking-wider text-ink-400">Language</label>
-                <Select value={previewVariantId} onChange={(e) => setPreviewVariantId(e.target.value)} className="mt-1 max-w-xs">
-                  <option value="">Default</option>
-                  {previewVariants.map((v) => <option key={v.id} value={v.id}>{v.language_label || v.language}</option>)}
-                </Select>
+                {/* Animated pill selector — EN default + every available language
+                    (from Language Settings AND template variants). Selected pill
+                    gets an animated blueish stroke ring. Picking a language
+                    switches BOTH the fixed labels AND the template body. */}
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <LangPill
+                    label="EN"
+                    title="English (default)"
+                    active={printLang === 'en'}
+                    onClick={() => pickPrintLang('en')}
+                  />
+                  {availableLangs.map((l) => (
+                    <LangPill
+                      key={l.code}
+                      label={l.code.toUpperCase()}
+                      title={l.label}
+                      active={printLang === l.code}
+                      onClick={() => pickPrintLang(l.code)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
             <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
@@ -258,6 +309,7 @@ export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }
           contract={preview}
           template={previewTemplate}
           settings={settings}
+          translations={printLang === 'en' ? null : languages.find((l) => l.language === printLang)?.translations ?? null}
         />
       )}
 
@@ -287,5 +339,28 @@ function StatBox({ label, value, tone = 'neutral' }: { label: string; value: str
       <p className="text-sm text-ink-400">{label}</p>
       <p className={`mt-2 num text-xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
     </div>
+  )
+}
+
+/* Language pill — mini label button with an animated blueish stroke
+   ring when selected. Used in the contract preview modal to pick the
+   print language (EN default + configured languages). */
+function LangPill({ label, title, active, onClick }: { label: string; title: string; active: boolean; onClick: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      title={title}
+      whileTap={{ scale: 0.94 }}
+      animate={active ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+      transition={active ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] } : { duration: 0.15 }}
+      className={`relative rounded-full px-3 py-1.5 text-2xs font-semibold tracking-wide transition-colors ${
+        active
+          ? 'text-info ring-2 ring-info/50 bg-infoBg'
+          : 'text-ink-500 border border-line bg-surface hover:bg-ink-50 hover:text-ink'
+      }`}
+    >
+      {label}
+    </motion.button>
   )
 }

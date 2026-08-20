@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom'
 import type { Invoice, InvoiceService } from '../lib/types'
 import { eurFull, dateLong, dateShort } from '../lib/format'
 import { parseInvoiceNotes } from '../lib/invoiceExtras'
+import { makeT } from '../lib/translations'
 
 const LOGO_URL = 'https://kappa.lol/FAHnNi'
 
@@ -16,6 +17,8 @@ interface Props {
   companyId?: string
   companyPhone?: string
   companyWebsite?: string
+  /** Translation map for the selected language (null = English). */
+  translations?: Record<string, string> | null
 }
 
 /**
@@ -56,8 +59,10 @@ export function FormalInvoiceDocument({
   companySubname = 'Legendary Design Ltd.',
   companyAddress = '', companyEmail = 'ops@calistaconcept.eu',
   companyVat = '', companyId = '', companyPhone = '', companyWebsite = '',
+  translations = null,
 }: Props) {
   const { freeform, extras } = parseInvoiceNotes(invoice.notes)
+  const t = makeT(translations)
   const subtotal = services.reduce((s, x) => s + Number(x.quantity) * Number(x.unit_price), 0)
   const vatAmount = invoice.vat_included ? 0 : subtotal * (Number(invoice.vat_pct) / 100)
   const total = invoice.vat_included ? subtotal : subtotal + vatAmount
@@ -66,19 +71,21 @@ export function FormalInvoiceDocument({
 
   // Document type label at the very top.
   const docIndicator =
-    extras.document_type === 'Original' ? 'ORIGINAL FOR CUSTOMER'
-    : extras.document_type === 'Copy' ? 'COPY'
-    : extras.document_type === 'Duplicate' ? 'DUPLICATE'
+    extras.document_type === 'Original' ? t('doc.original')
+    : extras.document_type === 'Copy' ? t('doc.copy')
+    : extras.document_type === 'Duplicate' ? t('doc.duplicate')
+    : extras.document_type === 'Proforma' ? t('doc.proforma')
+    : extras.document_type === 'Credit Note' ? t('doc.credit_note')
+    : extras.document_type === 'Receipt' ? t('doc.receipt')
     : extras.document_type.toUpperCase()
 
-  // Title-bar text — "COMMERCIAL INVOICE" for invoices (the user's
-  // request), "CREDIT NOTE" for credit notes, "PROFORMA INVOICE" for
-  // proforma, "RECEIPT" for receipts.
+  // Title-bar text — "COMMERCIAL INVOICE" for invoices, translated per
+  // the selected language.
   const titleBar =
-    extras.document_type === 'Credit Note' ? 'CREDIT NOTE'
-    : extras.document_type === 'Receipt' ? 'RECEIPT'
-    : extras.document_type === 'Proforma' ? 'PROFORMA INVOICE'
-    : 'COMMERCIAL INVOICE'
+    extras.document_type === 'Credit Note' ? t('doc.credit_note')
+    : extras.document_type === 'Receipt' ? t('doc.receipt')
+    : extras.document_type === 'Proforma' ? t('doc.proforma_invoice')
+    : t('doc.commercial_invoice')
 
   // QR code (optional)
   const qrUrl = extras.qr_enabled && extras.qr_payload
@@ -144,19 +151,19 @@ export function FormalInvoiceDocument({
         {qrUrl && (
           <div style={{ flexShrink: 0, marginLeft: '6mm', textAlign: 'center' }}>
             <img src={qrUrl} alt="Invoice QR code" style={{ width: '24mm', height: '24mm', display: 'block' }} />
-            <p style={{ margin: '1mm 0 0', fontSize: '7pt', color: '#555' }}>Scan to verify</p>
+            <p style={{ margin: '1mm 0 0', fontSize: '7pt', color: '#555' }}>{t('doc.scan_to_verify')}</p>
           </div>
         )}
       </div>
 
       {/* Meta row — invoice number / date / due / currency / status */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2mm 8mm', fontSize: '8.5pt', marginBottom: '3mm', paddingBottom: '2.5mm', borderBottom: '0.25pt solid #000' }}>
-        <MetaRow label="Invoice No." value={invoice.number} />
-        <MetaRow label="Invoice Date" value={dateLong(invoice.issue_date)} />
-        {invoice.due_date && <MetaRow label="Due Date" value={dateLong(invoice.due_date)} />}
-        <MetaRow label="Currency" value={invoice.currency} />
-        <MetaRow label="Status" value={invoice.status.toUpperCase()} />
-        {extras.payment_terms && <MetaRow label="Payment Terms" value={extras.payment_terms} />}
+        <MetaRow label={t('inv.invoice_no')} value={invoice.number} />
+        <MetaRow label={t('inv.invoice_date')} value={dateLong(invoice.issue_date)} />
+        {invoice.due_date && <MetaRow label={t('inv.due_date')} value={dateLong(invoice.due_date)} />}
+        <MetaRow label={t('inv.currency')} value={invoice.currency} />
+        <MetaRow label={t('inv.status')} value={invoice.status.toUpperCase()} />
+        {extras.payment_terms && <MetaRow label={t('inv.payment_terms')} value={extras.payment_terms} />}
       </div>
 
       {/* ============================================================ */}
@@ -164,25 +171,25 @@ export function FormalInvoiceDocument({
       {/* ============================================================ */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '3mm' }}>
         <div style={{ flex: 1, paddingRight: '4mm', borderRight: '0.25pt solid #000' }}>
-          <SectionHeader>SELLER</SectionHeader>
+          <SectionHeader>{t('party.seller')}</SectionHeader>
           <div style={{ fontSize: '9.5pt', lineHeight: 1.45 }}>
             <p style={{ margin: '0 0 1pt', fontWeight: 700 }}>{companyName}</p>
             {companySubname && <p style={{ margin: '0 0 1pt', color: '#333', fontSize: '8.5pt' }}>{companySubname}</p>}
             {companyAddress && <p style={{ margin: '0 0 1pt', color: '#333' }}>{companyAddress}</p>}
-            {companyPhone && <p style={{ margin: '0 0 1pt', color: '#333' }}>Tel: {companyPhone}</p>}
+            {companyPhone && <p style={{ margin: '0 0 1pt', color: '#333' }}>{t('party.tel')} {companyPhone}</p>}
             {companyEmail && <p style={{ margin: '0 0 1pt', color: '#333' }}>{companyEmail}</p>}
             {companyWebsite && <p style={{ margin: '0 0 1pt', color: '#333' }}>{companyWebsite}</p>}
-            {companyVat && <p style={{ margin: '0 0 1pt', color: '#333' }}>VAT ID: {companyVat}</p>}
-            {companyId && <p style={{ margin: '0', color: '#333' }}>Company ID: {companyId}</p>}
+            {companyVat && <p style={{ margin: '0 0 1pt', color: '#333' }}>{t('party.vat_id')}: {companyVat}</p>}
+            {companyId && <p style={{ margin: '0', color: '#333' }}>{t('party.company_id')}: {companyId}</p>}
           </div>
         </div>
         <div style={{ flex: 1, paddingLeft: '4mm' }}>
-          <SectionHeader>CUSTOMER / BILL TO</SectionHeader>
+          <SectionHeader>{t('party.customer')}</SectionHeader>
           <div style={{ fontSize: '9.5pt', lineHeight: 1.45 }}>
             <p style={{ margin: '0 0 1pt', fontWeight: 700 }}>{invoice.billed_to}</p>
             {invoice.billed_address && <p style={{ margin: '0 0 1pt', color: '#333' }}>{invoice.billed_address}</p>}
             {invoice.billed_email && <p style={{ margin: '0 0 1pt', color: '#333' }}>{invoice.billed_email}</p>}
-            {invoice.billed_vat && <p style={{ margin: '0', color: '#333' }}>VAT ID: {invoice.billed_vat}</p>}
+            {invoice.billed_vat && <p style={{ margin: '0', color: '#333' }}>{t('party.vat_id')}: {invoice.billed_vat}</p>}
           </div>
         </div>
       </div>
@@ -192,7 +199,7 @@ export function FormalInvoiceDocument({
       {/* ============================================================ */}
       {extras.ship_to && hasAnyText(extras.ship_to) && (
         <div style={{ marginBottom: '3mm', borderTop: '0.25pt solid #000', borderBottom: '0.25pt solid #000', padding: '2mm 0' }}>
-          <SectionHeader>SHIP TO — DELIVERY INFORMATION</SectionHeader>
+          <SectionHeader>{t('party.ship_to')}</SectionHeader>
           <div style={{ fontSize: '9.5pt', lineHeight: 1.45, display: 'flex', gap: '6mm' }}>
             <div style={{ flex: 1 }}>
               {extras.ship_to.name && <p style={{ margin: '0 0 1pt', fontWeight: 600 }}>{extras.ship_to.name}</p>}
@@ -201,11 +208,11 @@ export function FormalInvoiceDocument({
               {(extras.ship_to.city || extras.ship_to.country) && (
                 <p style={{ margin: '0 0 1pt', color: '#333' }}>{[extras.ship_to.city, extras.ship_to.country].filter(Boolean).join(', ')}</p>
               )}
-              {extras.ship_to.phone && <p style={{ margin: '0', color: '#333' }}>Tel: {extras.ship_to.phone}</p>}
+              {extras.ship_to.phone && <p style={{ margin: '0', color: '#333' }}>{t('party.tel')} {extras.ship_to.phone}</p>}
             </div>
             {extras.ship_to.delivery_method && (
               <div style={{ flex: '0 0 auto', fontSize: '8.5pt' }}>
-                <p style={{ margin: '0 0 1pt', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase' }}>Delivery method</p>
+                <p style={{ margin: '0 0 1pt', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase' }}>{t('party.delivery_method')}</p>
                 <p style={{ margin: '0', fontWeight: 600 }}>{extras.ship_to.delivery_method}</p>
               </div>
             )}
@@ -218,18 +225,18 @@ export function FormalInvoiceDocument({
       {/* ============================================================ */}
       {extras.references && hasAnyText(extras.references) && (
         <div style={{ marginBottom: '3mm', fontSize: '8.5pt' }}>
-          <SectionHeader>ADDITIONAL REFERENCES</SectionHeader>
+          <SectionHeader>{t('ref.additional')}</SectionHeader>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2mm 10mm', borderTop: '0.25pt solid #000', paddingTop: '1.5mm' }}>
-            <RefField label="Order No." value={extras.references.order_no} />
-            <RefField label="Customer No." value={extras.references.customer_no} />
-            <RefField label="PO Number" value={extras.references.po_number} />
-            <RefField label="Delivery Note" value={extras.references.delivery_note} />
-            <RefField label="Salesperson" value={extras.references.salesperson} />
-            <RefField label="Project" value={extras.references.project} />
-            <RefField label="Vehicle Reg." value={extras.references.vehicle_reg} />
-            <RefField label="VIN" value={extras.references.vin} />
-            <RefField label="Job Card" value={extras.references.job_card} />
-            <RefField label="Service Date" value={extras.references.service_date} />
+            <RefField label={t('ref.order_no')} value={extras.references.order_no} />
+            <RefField label={t('ref.customer_no')} value={extras.references.customer_no} />
+            <RefField label={t('ref.po_number')} value={extras.references.po_number} />
+            <RefField label={t('ref.delivery_note')} value={extras.references.delivery_note} />
+            <RefField label={t('ref.salesperson')} value={extras.references.salesperson} />
+            <RefField label={t('ref.project')} value={extras.references.project} />
+            <RefField label={t('ref.vehicle_reg')} value={extras.references.vehicle_reg} />
+            <RefField label={t('ref.vin')} value={extras.references.vin} />
+            <RefField label={t('ref.job_card')} value={extras.references.job_card} />
+            <RefField label={t('ref.service_date')} value={extras.references.service_date} />
           </div>
         </div>
       )}
@@ -241,17 +248,17 @@ export function FormalInvoiceDocument({
         <thead>
           <tr style={{ background: '#D3D3D3', color: '#000', fontSize: '8.5pt', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '6%', textAlign: 'center' }}>#</th>
-            <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '52%', textAlign: 'left' }}>Description</th>
-            <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '10%', textAlign: 'right' }}>Qty</th>
-            <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '15%', textAlign: 'right' }}>Unit Price</th>
-            <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '17%', textAlign: 'right' }}>Amount</th>
+            <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '52%', textAlign: 'left' }}>{t('table.description')}</th>
+            <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '10%', textAlign: 'right' }}>{t('table.qty')}</th>
+            <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '15%', textAlign: 'right' }}>{t('table.unit_price')}</th>
+            <th style={{ border: '0.25pt solid #000', padding: '1.5mm 1.5mm', width: '17%', textAlign: 'right' }}>{t('table.amount')}</th>
           </tr>
         </thead>
         <tbody>
           {services.length === 0 ? (
             <tr>
               <td colSpan={5} style={{ border: '0.25pt solid #000', padding: '4mm', textAlign: 'center', color: '#666', fontStyle: 'italic' }}>
-                No services on this invoice.
+                {t('table.no_items')}
               </td>
             </tr>
           ) : services.map((s, i) => (
@@ -277,19 +284,19 @@ export function FormalInvoiceDocument({
         <table style={{ borderCollapse: 'collapse', fontSize: '9.5pt', width: '55%' }}>
           <tbody>
             <tr>
-              <td style={{ padding: '1mm 3mm 1mm 0', color: '#333', textAlign: 'right', borderBottom: '0.25pt solid #ccc' }}>Subtotal</td>
+              <td style={{ padding: '1mm 3mm 1mm 0', color: '#333', textAlign: 'right', borderBottom: '0.25pt solid #ccc' }}>{t('totals.subtotal')}</td>
               <td style={{ padding: '1mm 3mm', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderBottom: '0.25pt solid #ccc', fontWeight: 600 }}>{eurFull(subtotal)}</td>
             </tr>
             <tr>
               <td style={{ padding: '1mm 3mm 1mm 0', color: '#333', textAlign: 'right', borderBottom: '0.25pt solid #ccc' }}>
-                VAT ({Number(invoice.vat_pct)}%){invoice.vat_included ? ' · included' : ''}
+                {t('totals.vat')} ({Number(invoice.vat_pct)}%){invoice.vat_included ? ` ${t('totals.vat_included')}` : ''}
               </td>
               <td style={{ padding: '1mm 3mm', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderBottom: '0.25pt solid #ccc' }}>
-                {invoice.vat_included ? 'incl.' : eurFull(vatAmount)}
+                {invoice.vat_included ? t('totals.vat_included').replace('· ', '') : eurFull(vatAmount)}
               </td>
             </tr>
             <tr style={{ background: '#D3D3D3' }}>
-              <td style={{ padding: '2mm 3mm', fontWeight: 700, fontSize: '11pt', textAlign: 'right', borderTop: '0.75pt solid #000', borderBottom: '0.75pt solid #000' }}>TOTAL DUE</td>
+              <td style={{ padding: '2mm 3mm', fontWeight: 700, fontSize: '11pt', textAlign: 'right', borderTop: '0.75pt solid #000', borderBottom: '0.75pt solid #000' }}>{t('totals.total_due')}</td>
               <td style={{ padding: '2mm 3mm', fontWeight: 700, fontSize: '12pt', textAlign: 'right', fontVariantNumeric: 'tabular-nums', borderTop: '0.75pt solid #000', borderBottom: '0.75pt solid #000' }}>{eurFull(total)}</td>
             </tr>
           </tbody>
@@ -298,7 +305,7 @@ export function FormalInvoiceDocument({
 
       {/* Amount in words */}
       <p style={{ margin: '1.5mm 0 0', textAlign: 'right', fontSize: '8.5pt', color: '#333', fontStyle: 'italic' }}>
-        Amount in words: {totalWords} {invoice.currency} only.
+        {t('totals.amount_in_words')} {totalWords} {invoice.currency} {t('totals.only')}
       </p>
 
       {/* ============================================================ */}
@@ -306,8 +313,8 @@ export function FormalInvoiceDocument({
       {/* ============================================================ */}
       <div style={{ marginTop: '3mm', display: 'flex', alignItems: 'center', gap: '4mm', borderTop: '0.25pt solid #000', borderBottom: '0.25pt solid #000', padding: '1.5mm 0', pageBreakInside: 'avoid' }}>
         <div style={{ flex: '0 0 auto' }}>
-          <p style={{ margin: '0', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase', fontWeight: 700 }}>Reference barcode</p>
-          <p style={{ margin: '0.5pt 0 0', fontSize: '7pt', color: '#666' }}>Cross-reference for the digital ledger</p>
+          <p style={{ margin: '0', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase', fontWeight: 700 }}>{t('misc.reference_barcode')}</p>
+          <p style={{ margin: '0.5pt 0 0', fontSize: '7pt', color: '#666' }}>{t('misc.cross_reference')}</p>
         </div>
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '3mm' }}>
           <div style={{ display: 'flex', height: '8mm', padding: '0.5mm 1mm', border: '0.25pt solid #000' }}>
@@ -325,21 +332,21 @@ export function FormalInvoiceDocument({
       {/* ============================================================ */}
       {extras.bank && hasAnyText(extras.bank) && (
         <div style={{ marginTop: '3mm', pageBreakInside: 'avoid' }}>
-          <SectionHeader>PAYMENT INFORMATION</SectionHeader>
+          <SectionHeader>{t('pay.payment_info')}</SectionHeader>
           <div style={{ display: 'flex', gap: '6mm', borderTop: '0.25pt solid #000', paddingTop: '1.5mm', fontSize: '9.5pt' }}>
             <div style={{ flex: 1 }}>
-              <p style={{ margin: '0 0 1mm', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase', fontWeight: 700 }}>Bank details</p>
-              <p style={{ margin: '0 0 1pt' }}><Label>Bank:</Label> {extras.bank.bank || '—'}</p>
-              <p style={{ margin: '0 0 1pt' }}><Label>IBAN:</Label> <span style={{ fontFamily: 'Courier New, monospace' }}>{extras.bank.iban || '—'}</span></p>
-              <p style={{ margin: '0 0 1pt' }}><Label>BIC/SWIFT:</Label> <span style={{ fontFamily: 'Courier New, monospace' }}>{extras.bank.bic || '—'}</span></p>
-              {extras.bank.account && <p style={{ margin: '0' }}><Label>Account:</Label> {extras.bank.account}</p>}
+              <p style={{ margin: '0 0 1mm', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase', fontWeight: 700 }}>{t('pay.bank_details')}</p>
+              <p style={{ margin: '0 0 1pt' }}><Label>{t('pay.bank')}</Label> {extras.bank.bank || '—'}</p>
+              <p style={{ margin: '0 0 1pt' }}><Label>{t('pay.iban')}</Label> <span style={{ fontFamily: 'Courier New, monospace' }}>{extras.bank.iban || '—'}</span></p>
+              <p style={{ margin: '0 0 1pt' }}><Label>{t('pay.bic')}</Label> <span style={{ fontFamily: 'Courier New, monospace' }}>{extras.bank.bic || '—'}</span></p>
+              {extras.bank.account && <p style={{ margin: '0' }}><Label>{t('pay.account')}</Label> {extras.bank.account}</p>}
             </div>
             <div style={{ flex: 1 }}>
-              <p style={{ margin: '0 0 1mm', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase', fontWeight: 700 }}>Payment details</p>
-              <p style={{ margin: '0 0 1pt' }}><Label>Method:</Label> Bank Transfer</p>
-              {extras.payment_terms && <p style={{ margin: '0 0 1pt' }}><Label>Terms:</Label> {extras.payment_terms}</p>}
-              <p style={{ margin: '0 0 1pt' }}><Label>Due:</Label> {invoice.due_date ? dateShort(invoice.due_date) : 'On receipt'}</p>
-              <p style={{ margin: '0' }}><Label>Reference:</Label> {invoice.number}</p>
+              <p style={{ margin: '0 0 1mm', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#555', textTransform: 'uppercase', fontWeight: 700 }}>{t('pay.payment_details')}</p>
+              <p style={{ margin: '0 0 1pt' }}><Label>{t('pay.method')}</Label> {t('pay.method_value')}</p>
+              {extras.payment_terms && <p style={{ margin: '0 0 1pt' }}><Label>{t('pay.terms')}</Label> {extras.payment_terms}</p>}
+              <p style={{ margin: '0 0 1pt' }}><Label>{t('pay.due')}</Label> {invoice.due_date ? dateShort(invoice.due_date) : t('pay.on_receipt')}</p>
+              <p style={{ margin: '0' }}><Label>{t('pay.reference')}</Label> {invoice.number}</p>
             </div>
           </div>
         </div>
@@ -351,9 +358,9 @@ export function FormalInvoiceDocument({
       {(extras.legal_notes || freeform) && (
         <div style={{ marginTop: '2.5mm', fontSize: '8.5pt', color: '#333', lineHeight: 1.45 }}>
           {extras.legal_notes && <p style={{ margin: '0 0 1pt' }}>{extras.legal_notes}</p>}
-          {freeform && <p style={{ margin: '0 0 1pt', fontStyle: 'italic' }}>Notes: {freeform}</p>}
+          {freeform && <p style={{ margin: '0 0 1pt', fontStyle: 'italic' }}>{t('misc.notes')} {freeform}</p>}
           <p style={{ margin: '0', fontSize: '7.5pt', color: '#666' }}>
-            This invoice was generated electronically via CCInvoiceEngine and is valid without signature.
+            {t('misc.printed_using_inv')}
           </p>
         </div>
       )}
@@ -364,8 +371,8 @@ export function FormalInvoiceDocument({
       {/*     together on one page                                       */}
       {/* ============================================================ */}
       <div style={{ marginTop: '4mm', display: 'flex', justifyContent: 'space-between', gap: '8mm', pageBreakInside: 'avoid' }}>
-        <SignBlock role="Issued by" name={extras.signature_issued_by} date={dateShort(invoice.issue_date)} />
-        <SignBlock role="Received by" name="" date="" />
+        <SignBlock role={t('misc.issued_by')} name={extras.signature_issued_by} date={dateShort(invoice.issue_date)} t={t} />
+        <SignBlock role={t('misc.received_by')} name="" date="" t={t} />
       </div>
 
       {/* ============================================================ */}
@@ -400,11 +407,11 @@ export function FormalInvoiceDocument({
         lineHeight: 1.4,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>© {new Date().getFullYear()} {companyName}. All rights reserved.</span>
-          <span>{companyVat ? `VAT ID: ${companyVat}` : ''}{companyId ? `${companyVat ? ' · ' : ''}Company ID: ${companyId}` : ''}</span>
+          <span>{t('misc.copyright', { year: String(new Date().getFullYear()), company: companyName })}</span>
+          <span>{companyVat ? `${t('party.vat_id')}: ${companyVat}` : ''}{companyId ? `${companyVat ? ' · ' : ''}${t('party.company_id')}: ${companyId}` : ''}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5pt' }}>
-          <span>Document {invoice.number} · Printed using CCInvoiceEngine v1.0</span>
+          <span>{t('misc.document')} {invoice.number} · {t('misc.printed_using_inv')}</span>
           <span>{companyEmail}{companyPhone ? ` · ${companyPhone}` : ''}</span>
         </div>
       </div>
@@ -459,7 +466,7 @@ function Label({ children }: { children: React.ReactNode }) {
   return <span style={{ fontWeight: 700, color: '#333' }}>{children}</span>
 }
 
-function SignBlock({ role, name, date }: { role: string; name: string; date: string }) {
+function SignBlock({ role, name, date, t }: { role: string; name: string; date: string; t: (k: string) => string }) {
   return (
     <div style={{ width: '46%' }}>
       <p style={{ margin: '0 0 1pt', fontSize: '7.5pt', letterSpacing: '0.1em', color: '#444', textTransform: 'uppercase', fontWeight: 700 }}>
@@ -468,8 +475,8 @@ function SignBlock({ role, name, date }: { role: string; name: string; date: str
       {name && <p style={{ margin: '0 0 6mm', fontSize: '9pt', fontWeight: 600 }}>{name}</p>}
       {!name && <p style={{ margin: '0 0 6mm', fontSize: '8.5pt', color: '#888' }}>__________________</p>}
       <div style={{ borderTop: '0.25pt solid #000', paddingTop: '1mm', fontSize: '8.5pt', display: 'flex', justifyContent: 'space-between' }}>
-        <span>Signature</span>
-        <span>{date || <span style={{ color: '#888' }}>Date: __________</span>}</span>
+        <span>{t('misc.signature')}</span>
+        <span>{date || <span style={{ color: '#888' }}>{t('misc.date')} __________</span>}</span>
       </div>
     </div>
   )

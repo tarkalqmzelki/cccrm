@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Printer, Trash2, Eye, FileText, Check } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
 import { Card, CardHeader } from './ui/Card'
@@ -12,6 +13,7 @@ import { InvoiceEditor } from './InvoiceEditor'
 import { FormalInvoiceDocument } from './FormalInvoiceDocument'
 import { INVOICE_STATUS_META, DEFAULT_INVOICE_SETTINGS } from '../lib/types'
 import type { Invoice, InvoiceService, InvoiceStatus, InvoiceSettings } from '../lib/types'
+import type { LanguageTranslations } from '../lib/translations'
 import { eurFull, dateShort } from '../lib/format'
 
 interface Props {
@@ -33,21 +35,30 @@ interface Props {
 export function InvoicesTab({ refreshKey, onInvoicesChanged, pendingContractRef, onContractRefConsumed }: Props) {
   const { push } = useToast()
   const { data, loading, reload } = useAsync(async () => {
-    const [invs, settings] = await Promise.all([db.listInvoices(), db.getInvoiceSettings()])
-    // Load services per invoice in parallel (small N — admins only).
+    const [invs, settings, langs] = await Promise.all([
+      db.listInvoices(),
+      db.getInvoiceSettings(),
+      db.listLanguageTranslations().catch(() => [] as LanguageTranslations[]),
+    ])
     const servicesByInvoice: Record<string, InvoiceService[]> = {}
     await Promise.all(
       invs.slice(0, 50).map(async (inv) => {
         servicesByInvoice[inv.id] = await db.listInvoiceServices(inv.id)
       }),
     )
-    return { invoices: invs, servicesByInvoice, settings: settings || DEFAULT_INVOICE_SETTINGS }
+    return {
+      invoices: invs,
+      servicesByInvoice,
+      settings: (settings || DEFAULT_INVOICE_SETTINGS) as InvoiceSettings,
+      languages: (langs || []) as LanguageTranslations[],
+    }
   }, [refreshKey])
 
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Invoice | null>(null)
   const [preview, setPreview] = useState<Invoice | null>(null)
   const [previewServices, setPreviewServices] = useState<InvoiceService[]>([])
+  const [printLang, setPrintLang] = useState('en')
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null)
   const [nextNumber, setNextNumber] = useState('')
 
@@ -60,6 +71,7 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged, pendingContractRef,
   }, [editorOpen, editing])
 
   const invoices = data?.invoices || []
+  const languages = data?.languages || []
 
   // Stats
   const stats = useMemo(() => {
@@ -111,6 +123,7 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged, pendingContractRef,
       const svcs = await db.listInvoiceServices(inv.id)
       setPreviewServices(svcs)
       setPreview(inv)
+      setPrintLang('en')
     } catch (e: any) {
       push({ tone: 'error', title: 'Could not load invoice', desc: e?.message })
     }
@@ -309,6 +322,24 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged, pendingContractRef,
                 <p className="font-mono text-2xs text-ink-500">{preview.number}</p>
               </div>
             </div>
+            {/* Language pills — EN default + every configured language */}
+            {languages.length > 0 && (
+              <div className="mt-3">
+                <label className="text-2xs uppercase tracking-wider text-ink-400">Language</label>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <LangPill label="EN" title="English (default)" active={printLang === 'en'} onClick={() => setPrintLang('en')} />
+                  {languages.map((l) => (
+                    <LangPill
+                      key={l.id}
+                      label={l.language.toUpperCase()}
+                      title={l.language_label || l.language}
+                      active={printLang === l.language}
+                      onClick={() => setPrintLang(l.language)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
               <div>
                 <p className="text-2xs uppercase tracking-wider text-ink-400">Bill to</p>
@@ -372,6 +403,7 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged, pendingContractRef,
           companyWebsite={data?.settings?.company_website ?? ''}
           companyVat={data?.settings?.company_vat ?? ''}
           companyId={data?.settings?.company_id ?? ''}
+          translations={printLang === 'en' ? null : languages.find((l) => l.language === printLang)?.translations ?? null}
         />
       )}
 
@@ -403,5 +435,26 @@ function StatBox({ label, value, tone = 'neutral' }: { label: string; value: str
       <p className="text-sm text-ink-400">{label}</p>
       <p className={`mt-2 num text-xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
     </div>
+  )
+}
+
+/* Language pill — same animated component as in ContractsTab. */
+function LangPill({ label, title, active, onClick }: { label: string; title: string; active: boolean; onClick: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      title={title}
+      whileTap={{ scale: 0.94 }}
+      animate={active ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+      transition={active ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] } : { duration: 0.15 }}
+      className={`relative rounded-full px-3 py-1.5 text-2xs font-semibold tracking-wide transition-colors ${
+        active
+          ? 'text-info ring-2 ring-info/50 bg-infoBg'
+          : 'text-ink-500 border border-line bg-surface hover:bg-ink-50 hover:text-ink'
+      }`}
+    >
+      {label}
+    </motion.button>
   )
 }

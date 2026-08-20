@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette, Languages } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { Card, CardHeader } from '../../components/ui/Card'
@@ -19,10 +19,12 @@ import { ChangeLogManager } from '../../components/ChangeLogManager'
 import { AdminDocumentation } from '../../components/AdminDocumentation'
 import { BroadcastManager } from '../../components/BroadcastManager'
 import { ContractTemplateManager } from '../../components/ContractTemplateManager'
+import { LanguageSettingsManager } from '../../components/LanguageSettingsManager'
 
 type Category =
   | 'commissions'
   | 'design'
+  | 'languages'
   | 'invoice-settings'
   | 'contract-templates'
   | 'notif-preferences'
@@ -45,6 +47,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'commissions',       label: 'Commissions',       icon: Settings2,  group: 'Commissions' },
   { id: 'design',            label: 'Design Settings',   icon: Palette,    group: 'Commissions' },
+  { id: 'languages',         label: 'Language Settings', icon: Languages,  group: 'Commissions' },
   { id: 'invoice-settings',  label: 'Invoice settings',  icon: InvoiceIcon, group: 'Commissions' },
   { id: 'contract-templates', label: 'Contract templates', icon: FileText,  group: 'Commissions' },
   { id: 'notif-preferences',  label: 'Your preferences',  icon: Bell,       group: 'Notifications' },
@@ -61,6 +64,7 @@ const NAV_ITEMS: NavItem[] = [
 const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
   commissions:       { title: 'Commissions',                      desc: 'Configure level thresholds, commission rates, and referral bonuses.' },
   design:            { title: 'Design settings',                 desc: 'Platform-wide branding — logo URLs for light and dark mode, shown in the sidebar and on the login page.' },
+  languages:         { title: 'Language settings',               desc: 'Translate every fixed label on printed invoices and contracts. Add a language, translate the entries, pick it when generating documents.' },
   'invoice-settings': { title: 'Invoice settings',                desc: 'Your business identity + default templates that prefill every new invoice. Update once, reuse on every invoice.' },
   'contract-templates': { title: 'Contract templates',             desc: 'Create and edit contract text templates with {placeholders}. Used when generating contracts.' },
   'notif-preferences': { title: 'Your notification preferences',  desc: 'Enable or disable each alert type for your own account.' },
@@ -236,6 +240,14 @@ export default function SettingsPage() {
           {/* ---------- Design settings ---------- */}
           {active === 'design' && (
             <DesignSettingsPanel />
+          )}
+
+          {/* ---------- Language settings ---------- */}
+          {active === 'languages' && (
+            <Card>
+              <CardHeader title="Language settings" desc="Translate every fixed label on printed invoices and contracts. Add a language, translate the entries, pick it when generating documents." />
+              <LanguageSettingsManager />
+            </Card>
           )}
 
           {/* ---------- Contract templates ---------- */}
