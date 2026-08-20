@@ -10,7 +10,7 @@ import {
   CONTRACT_STATUS_META,
   CONTRACT_STATUSES,
 } from '../lib/types'
-import type { Contract, ContractStatus, ContractTemplate, InvoiceSettings, CustomPlaceholderDef, Company, Contact } from '../lib/types'
+import type { Contract, ContractStatus, ContractTemplate, InvoiceSettings, CustomPlaceholderDef, Company, Contact, ContractTemplateVariant } from '../lib/types'
 import { parseContractNotes, serializeContractNotes, type CustomFields } from '../lib/contractExtras'
 
 interface Props {
@@ -48,7 +48,31 @@ export function ContractEditor({ open, onClose, onSaved, editing, templates, iss
   const [endDate, setEndDate] = useState('')
   const [notes, setNotes] = useState('')
   const [customFields, setCustomFields] = useState<CustomFields>({})
+  // Load language variants for the selected template
+  const [variants, setVariants] = useState<ContractTemplateVariant[]>([])
+  const [selectedVariantId, setSelectedVariantId] = useState('')
   const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    if (!templateId) { setVariants([]); setSelectedVariantId(''); return }
+    db.listContractVariants(templateId).then(setVariants).catch(() => setVariants([]))
+    setSelectedVariantId('')
+  }, [templateId])
+
+  // When a template or variant is selected, swap the body + custom
+  // placeholders that get rendered.  The "template" prop passed to
+  // FormalContractDocument should reflect the chosen language.
+  const effectiveTemplate = useMemo<ContractTemplate | null>(() => {
+    const base = templates.find((t) => t.id === templateId) || null
+    if (!base) return null
+    if (!selectedVariantId) return base
+    const variant = variants.find((v) => v.id === selectedVariantId)
+    if (!variant) return base
+    return {
+      ...base,
+      body: variant.body,
+      custom_placeholders: variant.custom_placeholders ?? [],
+    }
+  }, [templateId, templates, variants, selectedVariantId])
 
   // Load companies (and lazily their contacts) for the lead picker.
   useEffect(() => {
@@ -173,7 +197,7 @@ export function ContractEditor({ open, onClose, onSaved, editing, templates, iss
     }
   }
 
-  const selectedTemplate = templates.find((t) => t.id === templateId)
+  const selectedTemplate = effectiveTemplate
 
   return (
     <Modal
@@ -282,6 +306,14 @@ export function ContractEditor({ open, onClose, onSaved, editing, templates, iss
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
           </Field>
+          {templateId && variants.length > 0 && (
+            <Field label="Language" hint="Translated version">
+              <Select value={selectedVariantId} onChange={(e) => setSelectedVariantId(e.target.value)}>
+                <option value="">Default (English)</option>
+                {variants.map((v) => <option key={v.id} value={v.id}>{v.language_label || v.language}</option>)}
+              </Select>
+            </Field>
+          )}
           <Field label="Status">
             <Select value={status} onChange={(e) => setStatus(e.target.value as ContractStatus)}>
               {CONTRACT_STATUSES.map((s) => <option key={s} value={s}>{CONTRACT_STATUS_META[s].label}</option>)}

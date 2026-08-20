@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Printer, Trash2, Eye, FileText } from 'lucide-react'
+import { Plus, Pencil, Printer, Trash2, Eye, FileText, FilePlus2 } from 'lucide-react'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
 import { Card, CardHeader } from './ui/Card'
@@ -7,19 +7,24 @@ import { Button } from './ui/Button'
 import { Modal } from './ui/Modal'
 import { Skeleton } from './ui/Skeleton'
 import { Badge } from './ui/Badge'
+import { Select } from './ui/Input'
 import { useToast } from '../context/ToastContext'
 import { ContractEditor } from './ContractEditor'
 import { FormalContractDocument } from './FormalContractDocument'
 import { CONTRACT_STATUS_META, DEFAULT_INVOICE_SETTINGS } from '../lib/types'
-import type { Contract, ContractStatus, ContractTemplate, InvoiceSettings } from '../lib/types'
+import type { Contract, ContractStatus, ContractTemplate, InvoiceSettings, ContractTemplateVariant } from '../lib/types'
 import { dateShort } from '../lib/format'
 
 interface Props {
   refreshKey?: number
   onContractsChanged?: () => void
+  /** Called when the admin clicks "Create Invoice" on an active
+   *  contract — opens the invoice editor with the contract ref
+   *  pre-filled. */
+  onCreateInvoice?: (contractNumber: string) => void
 }
 
-export function ContractsTab({ refreshKey, onContractsChanged }: Props) {
+export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }: Props) {
   const { push } = useToast()
   const { data, loading, reload } = useAsync(async () => {
     const [contracts, templates, settings] = await Promise.all([
@@ -37,6 +42,8 @@ export function ContractsTab({ refreshKey, onContractsChanged }: Props) {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Contract | null>(null)
   const [preview, setPreview] = useState<Contract | null>(null)
+  const [previewVariants, setPreviewVariants] = useState<ContractTemplateVariant[]>([])
+  const [previewVariantId, setPreviewVariantId] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Contract | null>(null)
 
   const contracts = data?.contracts || []
@@ -53,6 +60,31 @@ export function ContractsTab({ refreshKey, onContractsChanged }: Props) {
 
   function startNew() { setEditing(null); setEditorOpen(true) }
   function startEdit(c: Contract) { setEditing(c); setEditorOpen(true) }
+
+  async function openPreview(c: Contract) {
+    setPreview(c)
+    setPreviewVariantId('')
+    // Load language variants for the contract's template
+    if (c.template_id) {
+      try {
+        const vs = await db.listContractVariants(c.template_id)
+        setPreviewVariants(vs)
+      } catch { setPreviewVariants([]) }
+    } else {
+      setPreviewVariants([])
+    }
+  }
+
+  // The effective template = base template + selected variant's body/placeholders
+  const previewTemplate = useMemo(() => {
+    if (!preview || !preview.template_id) return null
+    const base = templates.find((t) => t.id === preview.template_id) || null
+    if (!base) return null
+    if (!previewVariantId) return base
+    const variant = previewVariants.find((v) => v.id === previewVariantId)
+    if (!variant) return base
+    return { ...base, body: variant.body, custom_placeholders: variant.custom_placeholders ?? [] }
+  }, [preview, templates, previewVariants, previewVariantId])
 
   async function remove(c: Contract) {
     try {
@@ -124,7 +156,12 @@ export function ContractsTab({ refreshKey, onContractsChanged }: Props) {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button onClick={() => setPreview(c)} title="Preview" className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-600">
+                    {c.status === 'active' && onCreateInvoice && (
+                      <button onClick={() => onCreateInvoice(c.number)} title="Create invoice for this contract" className="grid h-8 w-8 place-items-center rounded-lg text-pos hover:bg-posBg">
+                        <FilePlus2 size={14} strokeWidth={1.75} />
+                      </button>
+                    )}
+                    <button onClick={() => openPreview(c)} title="Preview" className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-600">
                       <Eye size={14} strokeWidth={1.75} />
                     </button>
                     <button onClick={() => startEdit(c)} title="Edit" className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-600">
@@ -178,6 +215,15 @@ export function ContractsTab({ refreshKey, onContractsChanged }: Props) {
                 <p className="font-mono text-2xs text-ink-500">{preview.number}</p>
               </div>
             </div>
+            {previewVariants.length > 0 && (
+              <div className="mt-3">
+                <label className="text-2xs uppercase tracking-wider text-ink-400">Language</label>
+                <Select value={previewVariantId} onChange={(e) => setPreviewVariantId(e.target.value)} className="mt-1 max-w-xs">
+                  <option value="">Default</option>
+                  {previewVariants.map((v) => <option key={v.id} value={v.id}>{v.language_label || v.language}</option>)}
+                </Select>
+              </div>
+            )}
             <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
               <div>
                 <p className="text-2xs uppercase tracking-wider text-ink-400">Between</p>
@@ -194,20 +240,14 @@ export function ContractsTab({ refreshKey, onContractsChanged }: Props) {
               <p><strong>Issued:</strong> {dateShort(preview.issue_date)}</p>
               {preview.start_date && <p><strong>Effective:</strong> {dateShort(preview.start_date)}</p>}
             </div>
-            {(() => {
-              const tpl = templates.find((t) => t.id === preview.template_id)
-              return tpl ? (
-                <div className="mt-4 max-h-[40vh] overflow-y-auto rounded-lg bg-ink-50 p-4">
-                  <p className="mb-2 text-2xs font-medium uppercase tracking-wider text-ink-400">{tpl.name}</p>
-                  <div className="md text-2xs text-ink-600">
-                    {/* Show first 500 chars of the template body as preview */}
-                    {tpl.body.slice(0, 500)}{tpl.body.length > 500 ? '…' : ''}
-                  </div>
+            {previewTemplate && (
+              <div className="mt-4 max-h-[40vh] overflow-y-auto rounded-lg bg-ink-50 p-4">
+                <p className="mb-2 text-2xs font-medium uppercase tracking-wider text-ink-400">{previewTemplate.name}</p>
+                <div className="md text-2xs text-ink-600">
+                  {previewTemplate.body.slice(0, 500)}{previewTemplate.body.length > 500 ? '…' : ''}
                 </div>
-              ) : (
-                <p className="mt-4 text-2xs text-ink-400 italic">No template linked to this contract.</p>
-              )
-            })()}
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -216,7 +256,7 @@ export function ContractsTab({ refreshKey, onContractsChanged }: Props) {
       {preview && (
         <FormalContractDocument
           contract={preview}
-          template={templates.find((t) => t.id === preview.template_id) ?? null}
+          template={previewTemplate}
           settings={settings}
         />
       )}

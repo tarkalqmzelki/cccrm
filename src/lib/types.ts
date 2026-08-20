@@ -778,14 +778,23 @@ export interface ContractTemplate {
   name: string
   description: string
   body: string
-  /** Admin-defined custom placeholders (e.g. {payable}, {delivery_date}).
-   *  Each is { key, label, type } — the key is used as {key} in the
-   *  template body, the label is shown in the contract editor, the
-   *  type controls the input.  Stored as JSONB in the DB. */
   custom_placeholders: CustomPlaceholderDef[]
   created_at: string
   updated_at: string
   created_by: string | null
+}
+
+/** A language variant of a contract template — same concept but a
+ *  different language's body + custom placeholders. */
+export interface ContractTemplateVariant {
+  id: string
+  template_id: string
+  language: string           // 'en', 'it', 'fr', 'bg', …
+  language_label: string     // 'English', 'Italiano', …
+  body: string
+  custom_placeholders: CustomPlaceholderDef[]
+  created_at: string
+  updated_at: string
 }
 
 /** Definition of a custom placeholder on a contract template. */

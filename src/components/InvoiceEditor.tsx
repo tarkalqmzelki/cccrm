@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, Save, Copy, ChevronDown, Truck, FileText, Building, QrCode, Scale, PenLine, Layers } from 'lucide-react'
+import { Plus, Trash2, Save, Copy, ChevronDown, Truck, FileText, Building, QrCode, Scale, PenLine, Layers, Check, X, Link2 } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input, Field, Textarea, Select } from './ui/Input'
@@ -12,7 +12,7 @@ import {
   INVOICE_STATUS_META,
   INVOICE_STATUSES,
 } from '../lib/types'
-import type { Invoice, InvoiceService, InvoiceStatus, InvoiceSettings } from '../lib/types'
+import type { Invoice, InvoiceService, InvoiceStatus, Contract, InvoiceSettings } from '../lib/types'
 import {
   DEFAULT_EXTRAS, DOCUMENT_TYPES, SECONDARY_SECTION_TYPES,
   parseInvoiceNotes, serializeInvoiceNotes, defaultQrPayload,
@@ -26,6 +26,9 @@ interface Props {
   onSaved: () => void
   editing?: Invoice | null
   nextNumber?: string
+  /** Pre-fill the contract ref field (e.g. when the admin clicked
+   *  "Create Invoice" on an active contract). */
+  initialContractRef?: string
 }
 
 interface LineItem {
@@ -48,7 +51,7 @@ interface OptionalSectionState {
   secondary: boolean
 }
 
-export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: Props) {
+export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber, initialContractRef }: Props) {
   const { push } = useToast()
   const isEdit = !!editing
 
@@ -65,6 +68,37 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
   const [vatPct, setVatPct] = useState('0')
   const [freeformNotes, setFreeformNotes] = useState('')
   const [contractRef, setContractRef] = useState('')
+  // Live validation of the contract reference — null = idle (empty
+  // field), 'checking' = lookup in flight, 'valid' = found, 'invalid'
+  // = not found.  When valid we also keep the matched contract so the
+  // admin can pull details from it.
+  const [contractStatus, setContractStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
+  const [matchedContract, setMatchedContract] = useState<Contract | null>(null)
+
+  // Debounced live lookup — fires whenever the admin types/pastes a
+  // contract number.  Shows a tick when it matches a real contract.
+  useEffect(() => {
+    const num = contractRef.trim()
+    if (!num) { setContractStatus('idle'); setMatchedContract(null); return }
+    setContractStatus('checking')
+    const t = setTimeout(async () => {
+      const c = await db.findContractByNumber(num)
+      if (c) { setContractStatus('valid'); setMatchedContract(c) }
+      else { setContractStatus('invalid'); setMatchedContract(null) }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [contractRef])
+
+  /** Fill the bill-to block from the matched contract's counterparty. */
+  function fillFromContract() {
+    if (!matchedContract) return
+    setBilledTo(matchedContract.counterparty_company || matchedContract.counterparty_name || '')
+    setBilledVat(matchedContract.counterparty_vat || '')
+    setBilledAddress(matchedContract.counterparty_address || '')
+    setBilledEmail(matchedContract.counterparty_email || '')
+    push({ tone: 'success', title: 'Details pulled from contract', desc: matchedContract.number })
+  }
+
   const [items, setItems] = useState<LineItem[]>([])
   const [saving, setSaving] = useState(false)
 
@@ -134,7 +168,7 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
       setStatus('draft')
       setVatIncluded(false); setVatPct('0')
       setFreeformNotes('')
-      setContractRef('')
+      setContractRef(initialContractRef ?? '')
       setItems([{ name: '', description: '', quantity: 1, unit_price: 0 }])
       // Prefill optional sections from the saved invoice settings so
       // the admin doesn't retype bank/legal/signature on every invoice.
@@ -373,13 +407,53 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
               {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{INVOICE_STATUS_META[s].label}</option>)}
             </Select>
           </Field>
-          <Field label="Linked contract" hint="Reference a contract number (optional)">
-            <Input
-              value={contractRef}
-              onChange={(e) => setContractRef(e.target.value)}
-              placeholder="CC-CTR-2026-XXXXXX"
-              className="font-mono text-sm"
-            />
+          <Field label="Linked contract" hint="Paste a contract number — validated live">
+            <div className="flex gap-1.5">
+              <div className="relative flex-1">
+                <Input
+                  value={contractRef}
+                  onChange={(e) => setContractRef(e.target.value)}
+                  placeholder="CC-CTR-2026-XXXXXX"
+                  className={`font-mono text-sm ${contractStatus === 'valid' ? 'pr-9 border-pos' : contractStatus === 'invalid' ? 'pr-9 border-neg' : ''}`}
+                />
+                {/* Status icon — tick when matched, X when not */}
+                {contractStatus === 'checking' && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 animate-pulse">…</span>
+                )}
+                {contractStatus === 'valid' && (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-pos" title={`Matched: ${matchedContract?.number}`}>
+                    <Check size={15} strokeWidth={2.5} />
+                  </span>
+                )}
+                {contractStatus === 'invalid' && (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neg" title="No contract with this number">
+                    <X size={15} strokeWidth={2.5} />
+                  </span>
+                )}
+              </div>
+              {/* Pull bill-to details from the matched contract */}
+              {contractStatus === 'valid' && matchedContract && (
+                <button
+                  type="button"
+                  onClick={fillFromContract}
+                  title="Fill bill-to details from this contract"
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-line bg-posBg text-pos hover:bg-posBg/70"
+                >
+                  <Link2 size={15} strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
+            {/* Matched contract info strip */}
+            {contractStatus === 'valid' && matchedContract && (
+              <p className="mt-1.5 text-2xs text-ink-500">
+                <span className={`inline-block h-1.5 w-1.5 rounded-full mr-1 ${matchedContract.status === 'active' ? 'bg-pos' : 'bg-warn'}`} />
+                {matchedContract.counterparty_company || matchedContract.counterparty_name}
+                {matchedContract.counterparty_vat ? ` · VAT ${matchedContract.counterparty_vat}` : ''}
+                {' · '}issued {matchedContract.issue_date}
+                {matchedContract.start_date ? ` · effective ${matchedContract.start_date}` : ''}
+                {' · '}click <Link2 size={10} strokeWidth={2} className="inline mx-0.5" /> to pull details
+              </p>
+            )}
           </Field>
           <Field label="Notes / payment terms" hint="Optional — printed on the invoice">
             <Textarea value={freeformNotes} onChange={(e) => setFreeformNotes(e.target.value)} rows={2} placeholder="Payment due within 30 days by bank transfer." />

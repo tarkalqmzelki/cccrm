@@ -15,11 +15,13 @@ import type { Invoice, InvoiceService, InvoiceStatus, InvoiceSettings } from '..
 import { eurFull, dateShort } from '../lib/format'
 
 interface Props {
-  /** Bumped by the parent whenever a finance entry changes (so we
-   *  re-sync the linked finance_entry_id when an invoice is marked
-   *  paid from elsewhere, etc.). */
   refreshKey?: number
   onInvoicesChanged?: () => void
+  /** When the admin clicks "Create Invoice" on an active contract,
+   *  the Finances page switches to this tab and passes the contract
+   *  number here — the invoice editor opens with it pre-filled. */
+  pendingContractRef?: string | null
+  onContractRefConsumed?: () => void
 }
 
 /**
@@ -28,7 +30,7 @@ interface Props {
  * blobs); the printable PDF is generated on demand via the
  * FormalInvoiceDocument portal — same pattern as the balance sheet.
  */
-export function InvoicesTab({ refreshKey, onInvoicesChanged }: Props) {
+export function InvoicesTab({ refreshKey, onInvoicesChanged, pendingContractRef, onContractRefConsumed }: Props) {
   const { push } = useToast()
   const { data, loading, reload } = useAsync(async () => {
     const [invs, settings] = await Promise.all([db.listInvoices(), db.getInvoiceSettings()])
@@ -92,6 +94,17 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged }: Props) {
     setEditing(inv)
     setEditorOpen(true)
   }
+
+  // When the Finances page sends a pendingContractRef (from the
+  // Contracts tab "Create Invoice" button), open the invoice editor
+  // with that contract ref pre-filled.
+  useEffect(() => {
+    if (pendingContractRef) {
+      setEditing(null)
+      setEditorOpen(true)
+      onContractRefConsumed?.()
+    }
+  }, [pendingContractRef, onContractRefConsumed])
 
   async function openPreview(inv: Invoice) {
     try {
@@ -266,6 +279,7 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged }: Props) {
         onSaved={() => { reload(); onInvoicesChanged?.() }}
         editing={editing}
         nextNumber={nextNumber}
+        initialContractRef={pendingContractRef ?? undefined}
       />
 
       {/* On-screen preview modal — actual print uses the formal portal */}

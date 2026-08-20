@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, Save, FileText, Eye, Code, Braces } from 'lucide-react'
+import { Plus, Pencil, Trash2, Save, FileText, Eye, Code, Braces, Languages } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useAsync } from '../lib/hooks/useAsync'
@@ -10,7 +10,7 @@ import { Input, Field, Textarea, Select } from './ui/Input'
 import { Skeleton } from './ui/Skeleton'
 import { Modal } from './ui/Modal'
 import { CONTRACT_PLACEHOLDERS } from '../lib/types'
-import type { ContractTemplate, CustomPlaceholderDef } from '../lib/types'
+import type { ContractTemplate, CustomPlaceholderDef, ContractTemplateVariant } from '../lib/types'
 import { dateShort } from '../lib/format'
 
 /**
@@ -26,6 +26,7 @@ export function ContractTemplateManager() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<ContractTemplate | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ContractTemplate | null>(null)
+  const [variantsTarget, setVariantsTarget] = useState<ContractTemplate | null>(null)
 
   const templates = data ?? []
 
@@ -83,6 +84,9 @@ export function ContractTemplateManager() {
                 <p className="text-2xs text-ink-400">Updated {dateShort(t.updated_at)}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                <button onClick={() => setVariantsTarget(t)} title="Language variants" className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-600">
+                  <Languages size={14} strokeWidth={1.75} />
+                </button>
                 <button onClick={() => startEdit(t)} title="Edit" className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-600">
                   <Pencil size={14} strokeWidth={1.75} />
                 </button>
@@ -96,6 +100,15 @@ export function ContractTemplateManager() {
       )}
 
       <TemplateEditor open={editorOpen} onClose={() => setEditorOpen(false)} onSaved={reload} editing={editing} />
+
+      {/* Language variants editor */}
+      {variantsTarget && (
+        <VariantEditor
+          template={variantsTarget}
+          onClose={() => setVariantsTarget(null)}
+          onSaved={() => {/* variants are fetched fresh inside VariantEditor */}}
+        />
+      )}
 
       <Modal
         open={!!deleteTarget}
@@ -304,6 +317,278 @@ function TemplateEditor({
             onChange={(e) => setBody(e.target.value)}
             rows={16}
             placeholder={`# SERVICE AGREEMENT\n\nThis Agreement is entered into on {issue_date}\nby {company_name} and {counterparty_name}…\n\n**Amount payable:** {payable} EUR`}
+            className="font-mono text-[13px] leading-relaxed"
+          />
+        ) : (
+          <div className="md min-h-[24rem] max-h-[55vh] overflow-y-auto rounded-xl border border-line bg-surface p-5">
+            {body.trim() ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown> : <p className="text-sm text-ink-400">Nothing to preview yet.</p>}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* VariantEditor — multi-language versions of a template              */
+/* ------------------------------------------------------------------ */
+function VariantEditor({
+  template, onClose,
+}: {
+  template: ContractTemplate
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { push } = useToast()
+  const { data: variants, loading, reload } = useAsync(async () => db.listContractVariants(template.id), [template.id])
+
+  const [editingVariant, setEditingVariant] = useState<ContractTemplateVariant | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ContractTemplateVariant | null>(null)
+
+  function startCreate() { setEditingVariant(null); setCreating(true) }
+  function startEdit(v: ContractTemplateVariant) { setEditingVariant(v); setCreating(true) }
+
+  async function remove(id: string) {
+    try {
+      await db.deleteContractVariant(id)
+      push({ tone: 'info', title: 'Language variant deleted' })
+      setDeleteTarget(null)
+      reload()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not delete', desc: e?.message })
+    }
+  }
+
+  const list = variants ?? []
+
+  return (
+    <>
+      <Modal
+        open={!creating}
+        onClose={onClose}
+        title={`Language variants — ${template.name}`}
+        desc="Create translated versions of this template. When generating a contract, you'll be able to pick which language to use."
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={onClose}>Close</Button>
+            <Button size="sm" icon={<Plus size={13} strokeWidth={1.75} />} onClick={startCreate}>Add language</Button>
+          </>
+        }
+      >
+        {loading ? (
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}</div>
+        ) : list.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-line px-4 py-8 text-center">
+            <Languages size={22} strokeWidth={1.75} className="text-ink-300 mx-auto" />
+            <p className="mt-2 text-sm text-ink-400">No language variants yet. The base template (English) is used by default.</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {list.map((v) => (
+              <div key={v.id} className="flex items-center gap-3 rounded-xl border border-line p-3 hover:bg-ink-50 transition-colors">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ink-50 text-ink">
+                  <Languages size={14} strokeWidth={1.75} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {v.language_label || v.language}
+                    <code className="ml-2 rounded bg-ink-100 px-1.5 py-0.5 text-2xs text-ink-500">{v.language}</code>
+                  </p>
+                  <p className="text-2xs text-ink-400">Updated {dateShort(v.updated_at)}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button onClick={() => startEdit(v)} title="Edit" className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-600">
+                    <Pencil size={14} strokeWidth={1.75} />
+                  </button>
+                  <button onClick={() => setDeleteTarget(v)} title="Delete" className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-negBg hover:text-neg">
+                    <Trash2 size={14} strokeWidth={1.75} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      {creating && (
+        <VariantForm
+          template={template}
+          editing={editingVariant}
+          onClose={() => { setCreating(false); setEditingVariant(null) }}
+          onSaved={() => { setCreating(false); setEditingVariant(null); reload() }}
+        />
+      )}
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete variant?"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="danger" icon={<Trash2 size={15} strokeWidth={1.75} />} onClick={() => deleteTarget && remove(deleteTarget.id)}>Delete</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-ink-500">Delete the <strong>{deleteTarget?.language_label || deleteTarget?.language}</strong> variant? This cannot be undone.</p>
+      </Modal>
+    </>
+  )
+}
+
+function VariantForm({
+  template, editing, onClose, onSaved,
+}: {
+  template: ContractTemplate
+  editing: ContractTemplateVariant | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { push } = useToast()
+  const [language, setLanguage] = useState('')
+  const [languageLabel, setLanguageLabel] = useState('')
+  const [body, setBody] = useState('')
+  const [placeholders, setPlaceholders] = useState<CustomPlaceholderDef[]>([])
+  const [mode, setMode] = useState<'write' | 'preview'>('write')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!editing) return
+    setLanguage(editing.language)
+    setLanguageLabel(editing.language_label)
+    setBody(editing.body)
+    setPlaceholders(editing.custom_placeholders ?? [])
+    setMode('write')
+  }, [editing])
+
+  function addPlaceholder() {
+    setPlaceholders((cur) => [...cur, { key: '', label: '', type: 'text' }])
+  }
+  function updatePlaceholder(idx: number, patch: Partial<CustomPlaceholderDef>) {
+    setPlaceholders((cur) => cur.map((p, i) => (i === idx ? { ...p, ...patch } : p)))
+  }
+  function removePlaceholder(idx: number) {
+    setPlaceholders((cur) => cur.filter((_, i) => i !== idx))
+  }
+
+  async function save() {
+    if (!language.trim()) { push({ tone: 'error', title: 'Language code is required' }); return }
+    if (!languageLabel.trim()) { push({ tone: 'error', title: 'Language label is required' }); return }
+    setSaving(true)
+    try {
+      const cleanPlaceholders = placeholders
+        .filter((p) => p.key.trim() && p.label.trim())
+        .map((p) => ({ key: p.key.trim().replace(/[^a-z0-9_]/gi, '_').toLowerCase(), label: p.label.trim(), type: p.type }))
+      if (editing) {
+        await db.updateContractVariant(editing.id, { language: language.trim().toLowerCase(), language_label: languageLabel.trim(), body, custom_placeholders: cleanPlaceholders })
+        push({ tone: 'success', title: 'Variant updated' })
+      } else {
+        await db.createContractVariant({ template_id: template.id, language: language.trim().toLowerCase(), language_label: languageLabel.trim(), body, custom_placeholders: cleanPlaceholders })
+        push({ tone: 'success', title: 'Variant created' })
+      }
+      onSaved()
+      onClose()
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not save', desc: e?.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const allPlaceholders = [
+    ...CONTRACT_PLACEHOLDERS,
+    ...placeholders.filter((p) => p.key.trim()).map((p) => `{${p.key.trim().replace(/[^a-z0-9_]/gi, '_').toLowerCase()}}`),
+  ]
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={editing ? `Edit ${editing.language_label} variant` : 'New language variant'}
+      desc={`Translated version of "${template.name}". The body and placeholders can differ per language.`}
+      size="xl"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button icon={<Save size={15} strokeWidth={1.75} />} onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save variant'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Language code" required hint="e.g. en, it, fr, bg">
+            <Input value={language} onChange={(e) => setLanguage(e.target.value)} placeholder="it" className="font-mono text-sm" />
+          </Field>
+          <Field label="Language label" required hint="Display name">
+            <Input value={languageLabel} onChange={(e) => setLanguageLabel(e.target.value)} placeholder="Italiano" />
+          </Field>
+        </div>
+
+        {/* Custom placeholders */}
+        <div className="rounded-xl border border-line bg-ink-50/30 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Braces size={14} strokeWidth={1.75} className="text-ink-600" />
+              <p className="text-sm font-medium">Custom placeholders (this language)</p>
+            </div>
+            <Button size="sm" variant="secondary" icon={<Plus size={13} strokeWidth={1.75} />} onClick={addPlaceholder}>Add</Button>
+          </div>
+          {placeholders.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-line px-3 py-3 text-center text-2xs text-ink-400">No custom placeholders. Add one or inherit from the base template.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {placeholders.map((p, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-1.5">
+                    <span className="text-2xs text-ink-400 font-mono">{'{'}</span>
+                    <Input value={p.key} onChange={(e) => updatePlaceholder(idx, { key: e.target.value })} placeholder="payable" className="h-9 font-mono text-sm" />
+                    <span className="text-2xs text-ink-400 font-mono">{'}'}</span>
+                  </div>
+                  <Input value={p.label} onChange={(e) => updatePlaceholder(idx, { label: e.target.value })} placeholder="Label" className="h-9 flex-1" />
+                  <Select value={p.type} onChange={(e) => updatePlaceholder(idx, { type: e.target.value as CustomPlaceholderDef['type'] })} className="h-9 w-28">
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="date">Date</option>
+                    <option value="textarea">Long text</option>
+                  </Select>
+                  <button type="button" onClick={() => removePlaceholder(idx)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-negBg hover:text-neg">
+                    <Trash2 size={14} strokeWidth={1.75} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-line bg-ink-50/40 px-3 py-2">
+          <p className="mb-1.5 text-2xs font-medium uppercase tracking-wider text-ink-400">All available placeholders</p>
+          <div className="flex flex-wrap gap-1">
+            {allPlaceholders.map((p) => (
+              <code key={p} className="rounded bg-surface px-1.5 py-0.5 text-2xs text-ink-600 ring-1 ring-line">{p}</code>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
+          <button onClick={() => setMode('write')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${mode === 'write' ? 'bg-ink text-white' : 'text-ink-500 hover:text-ink'}`}>
+            <Code size={14} strokeWidth={1.75} /> Write
+          </button>
+          <button onClick={() => setMode('preview')} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${mode === 'preview' ? 'bg-ink text-white' : 'text-ink-500 hover:text-ink'}`}>
+            <Eye size={14} strokeWidth={1.75} /> Preview
+          </button>
+        </div>
+
+        {mode === 'write' ? (
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={16}
+            placeholder={`# SERVICE AGREEMENT (Italiano)\n\nQuesto accordo è stipulato il {issue_date}\ntra {company_name} e {counterparty_name}…`}
             className="font-mono text-[13px] leading-relaxed"
           />
         ) : (

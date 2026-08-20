@@ -10,6 +10,7 @@ import type {
   NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel, LeadReminder, LeadStatus, AdminDoc, AdminDocSnippet,
   Invoice, InvoiceService, InvoiceStatus, InvoiceSettings,
   Contract, ContractTemplate, ContractStatus, CustomPlaceholderDef,
+  ContractTemplateVariant,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS } from './types'
 import { DEFAULT_SETTINGS } from './types'
@@ -1649,5 +1650,59 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     let code = ''
     for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
     return `CC-CTR-${year}-${code}`
+  },
+
+  /* ================================================================== */
+  /* CONTRACT TEMPLATE VARIANTS (multi-language)                          */
+  /* ================================================================== */
+
+  async listContractVariants(templateId: string): Promise<ContractTemplateVariant[]> {
+    const { data, error } = await supabase!.from('contract_template_variants')
+      .select('*').eq('template_id', templateId).order('language', { ascending: true })
+    if (error) throw error
+    return (data || []) as ContractTemplateVariant[]
+  },
+
+  async createContractVariant(v: {
+    template_id: string
+    language: string
+    language_label: string
+    body: string
+    custom_placeholders?: CustomPlaceholderDef[]
+  }): Promise<void> {
+    const { error } = await supabase!.from('contract_template_variants').insert({
+      template_id: v.template_id,
+      language: v.language,
+      language_label: v.language_label,
+      body: v.body,
+      custom_placeholders: v.custom_placeholders ?? [],
+    })
+    if (error) throw error
+  },
+
+  async updateContractVariant(id: string, patch: Partial<{
+    language: string
+    language_label: string
+    body: string
+    custom_placeholders: CustomPlaceholderDef[]
+  }>): Promise<void> {
+    const { error } = await supabase!.from('contract_template_variants')
+      .update({ ...patch, updated_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteContractVariant(id: string): Promise<void> {
+    const { error } = await supabase!.from('contract_template_variants').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /** Search contracts by number prefix — used by the InvoiceEditor's
+   *  live contract-ref validator (tick/X). */
+  async findContractByNumber(number: string): Promise<Contract | null> {
+    if (!number.trim()) return null
+    const { data, error } = await supabase!.from('contracts')
+      .select('*').eq('number', number.trim()).maybeSingle()
+    if (error) return null
+    return (data || null) as Contract | null
   },
 }

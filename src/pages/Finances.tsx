@@ -98,6 +98,7 @@ export default function Finances() {
   // Bumped when invoices change so the finance list re-syncs (a
   // newly-paid invoice creates a revenue row).
   const [invoiceRefreshKey, setInvoiceRefreshKey] = useState(0)
+  const [pendingContractRef, setPendingContractRef] = useState<string | null>(null)
 
   /* When preset changes, update the date range */
   useEffect(() => {
@@ -462,6 +463,8 @@ export default function Finances() {
       {subtab === 'invoices' && (
         <InvoicesTab
           refreshKey={invoiceRefreshKey}
+          pendingContractRef={pendingContractRef}
+          onContractRefConsumed={() => setPendingContractRef(null)}
           onInvoicesChanged={() => {
             setInvoiceRefreshKey((k) => k + 1)
             reload()
@@ -475,6 +478,12 @@ export default function Finances() {
           onContractsChanged={() => {
             setInvoiceRefreshKey((k) => k + 1)
             reload()
+          }}
+          onCreateInvoice={(contractNumber) => {
+            // Switch to the invoices subtab and tell it to open the
+            // editor with this contract ref pre-filled.
+            setSubtab('invoices')
+            setPendingContractRef(contractNumber)
           }}
         />
       )}
