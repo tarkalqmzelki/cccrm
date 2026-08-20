@@ -757,6 +757,23 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   updated_at: '',
 }
 
+/** Platform-wide visual / branding settings — separate from invoice
+ *  settings so the admin's logo identity is owned at the platform
+ *  level, not tangled with invoice templates. */
+export interface DesignSettings {
+  id: number
+  logo_url_light: string
+  logo_url_dark: string
+  updated_at: string
+}
+
+export const DEFAULT_DESIGN_SETTINGS: DesignSettings = {
+  id: 1,
+  logo_url_light: '',
+  logo_url_dark: '',
+  updated_at: '',
+}
+
 // =====================================================================
 // CONTRACTS
 // =====================================================================

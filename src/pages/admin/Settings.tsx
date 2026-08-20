@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { Card, CardHeader } from '../../components/ui/Card'
@@ -8,8 +8,8 @@ import { Input, Field, Textarea } from '../../components/ui/Input'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { PageContainer } from '../../components/layout/AppShell'
 import { useToast } from '../../context/ToastContext'
-import { DEFAULT_SETTINGS, SYSTEM_STATUS_META, DEFAULT_INVOICE_SETTINGS } from '../../lib/types'
-import type { Settings, SystemStatus, SystemStatusValue, InvoiceSettings } from '../../lib/types'
+import { DEFAULT_SETTINGS, SYSTEM_STATUS_META, DEFAULT_INVOICE_SETTINGS, DEFAULT_DESIGN_SETTINGS } from '../../lib/types'
+import type { Settings, SystemStatus, SystemStatusValue, InvoiceSettings, DesignSettings } from '../../lib/types'
 import { dateShort } from '../../lib/format'
 import { NotificationTemplateEditor } from '../../components/NotificationTemplateEditor'
 import { NotificationPreferences } from '../../components/NotificationPreferences'
@@ -22,6 +22,7 @@ import { ContractTemplateManager } from '../../components/ContractTemplateManage
 
 type Category =
   | 'commissions'
+  | 'design'
   | 'invoice-settings'
   | 'contract-templates'
   | 'notif-preferences'
@@ -43,6 +44,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'commissions',       label: 'Commissions',       icon: Settings2,  group: 'Commissions' },
+  { id: 'design',            label: 'Design Settings',   icon: Palette,    group: 'Commissions' },
   { id: 'invoice-settings',  label: 'Invoice settings',  icon: InvoiceIcon, group: 'Commissions' },
   { id: 'contract-templates', label: 'Contract templates', icon: FileText,  group: 'Commissions' },
   { id: 'notif-preferences',  label: 'Your preferences',  icon: Bell,       group: 'Notifications' },
@@ -58,6 +60,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
   commissions:       { title: 'Commissions',                      desc: 'Configure level thresholds, commission rates, and referral bonuses.' },
+  design:            { title: 'Design settings',                 desc: 'Platform-wide branding — logo URLs for light and dark mode, shown in the sidebar and on the login page.' },
   'invoice-settings': { title: 'Invoice settings',                desc: 'Your business identity + default templates that prefill every new invoice. Update once, reuse on every invoice.' },
   'contract-templates': { title: 'Contract templates',             desc: 'Create and edit contract text templates with {placeholders}. Used when generating contracts.' },
   'notif-preferences': { title: 'Your notification preferences',  desc: 'Enable or disable each alert type for your own account.' },
@@ -228,6 +231,11 @@ export default function SettingsPage() {
           {/* ---------- Invoice settings ---------- */}
           {active === 'invoice-settings' && (
             <InvoiceSettingsPanel />
+          )}
+
+          {/* ---------- Design settings ---------- */}
+          {active === 'design' && (
+            <DesignSettingsPanel />
           )}
 
           {/* ---------- Contract templates ---------- */}
@@ -480,7 +488,7 @@ function InvoiceSettingsPanel() {
     setForm((f) => ({ ...f, [k]: v }))
   }
 
-  async function save() {
+      async function save() {
     setSaving(true)
     try {
       await db.updateInvoiceSettings({
@@ -623,6 +631,90 @@ function InvoiceSettingsPanel() {
       <div className="flex justify-end">
         <Button icon={<Save size={15} strokeWidth={1.75} />} onClick={save} disabled={saving}>
           {saving ? 'Saving…' : 'Save invoice settings'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Design settings panel — platform logo URLs per theme               */
+/* ------------------------------------------------------------------ */
+function DesignSettingsPanel() {
+  const { push } = useToast()
+  const { data, loading } = useAsync(async () => db.getDesignSettings(), [])
+  const [form, setForm] = useState<DesignSettings>(DEFAULT_DESIGN_SETTINGS)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (data) setForm(data)
+  }, [data])
+
+  async function save() {
+    setSaving(true)
+    try {
+      await db.updateDesignSettings({
+        logo_url_light: form.logo_url_light,
+        logo_url_dark: form.logo_url_dark,
+      })
+      push({ tone: 'success', title: 'Design settings saved', desc: 'Logo will update across the platform.' })
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not save', desc: e?.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>
+  }
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader title="Logo" desc="Set the logo image URL for each theme. Shown in the sidebar (top-left), on the login page, and in printed documents. Paste an SVG or PNG URL — the platform fetches it at runtime, no upload needed." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Light mode logo */}
+          <div>
+            <Field label="Logo URL — light mode" hint="Shown when light mode is active">
+              <Input
+                value={form.logo_url_light}
+                onChange={(e) => setForm((f) => ({ ...f, logo_url_light: e.target.value }))}
+                placeholder="https://… (defaults to Calista logo)"
+              />
+            </Field>
+            {form.logo_url_light && (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
+                <img src={form.logo_url_light} alt="Light logo preview" className="h-8 w-auto" />
+                <span className="text-2xs text-ink-400">Preview (light mode)</span>
+              </div>
+            )}
+          </div>
+          {/* Dark mode logo */}
+          <div>
+            <Field label="Logo URL — dark mode" hint="Shown when dark mode is active">
+              <Input
+                value={form.logo_url_dark}
+                onChange={(e) => setForm((f) => ({ ...f, logo_url_dark: e.target.value }))}
+                placeholder="https://… (defaults to Calista logo)"
+              />
+            </Field>
+            {form.logo_url_dark && (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-line bg-ink-900 px-3 py-2">
+                <img src={form.logo_url_dark} alt="Dark logo preview" className="h-8 w-auto" />
+                <span className="text-2xs text-ink-400">Preview (dark mode)</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <p className="mt-3 text-2xs text-ink-400">
+          Leave blank to use the default Calista Concept logo. SVG is recommended for crisp rendering at any size.
+        </p>
+      </Card>
+
+      <div className="flex justify-end">
+        <Button icon={<Save size={15} strokeWidth={1.75} />} onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save design settings'}
         </Button>
       </div>
     </div>

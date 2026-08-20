@@ -136,10 +136,10 @@ function NotificationBell({
     <div className="relative">
       <button
         onClick={onToggle}
-        className="relative grid h-10 w-10 place-items-center rounded-xl bg-surface text-ink ring-1 ring-line shadow-sm transition-colors hover:bg-ink-50 hover:ring-ink-200 lg:h-12 lg:w-12"
+        className="relative grid h-10 w-10 place-items-center rounded-xl bg-surface text-ink ring-1 ring-line shadow-sm transition-colors hover:bg-ink-50 hover:ring-ink-200 lg:h-9 lg:w-9"
         title="Notifications"
       >
-        <Bell size={18} strokeWidth={1.75} className="lg:h-[22px] lg:w-[22px]" />
+        <Bell size={18} strokeWidth={1.75} />
         {totalBadge > 0 && (
           <motion.span
             initial={{ scale: 0 }}
@@ -161,12 +161,7 @@ function NotificationBell({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.99 }}
               transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-              // On mobile the translucent glass backdrop can render too
-              // transparent (especially when the page behind is a
-              // solid color), so the dropdown reads as see-through
-              // and the page content bleeds through.  Use a solid
-              // bg-surface on mobile; keep the premium glass on lg.
-              className="absolute right-0 top-full z-[120] mt-2 w-[min(92vw,380px)] rounded-2xl border border-line bg-surface shadow-glass overflow-hidden lg:bg-transparent lg:glass-strong"
+              className="absolute right-0 top-full z-[120] mt-2 w-[min(92vw,380px)] rounded-2xl border border-line bg-surface shadow-glass overflow-hidden ring-1 ring-line"
             >
               <div className="flex items-center justify-between border-b border-line px-4 py-3">
                 <p className="text-sm font-semibold">Notifications</p>
@@ -306,11 +301,11 @@ function ThemeToggle() {
   return (
     <button
       onClick={() => setThemeState(toggleTheme())}
-      className="grid h-10 w-10 place-items-center rounded-xl bg-surface text-ink ring-1 ring-line shadow-sm transition-colors hover:bg-ink-50 hover:ring-ink-200 lg:h-12 lg:w-12"
+      className="grid h-10 w-10 place-items-center rounded-xl bg-surface text-ink ring-1 ring-line shadow-sm transition-colors hover:bg-ink-50 hover:ring-ink-200 lg:h-9 lg:w-9"
       title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       aria-label="Toggle theme"
     >
-      {theme === 'dark' ? <Sun size={18} strokeWidth={1.75} className="lg:!h-[22px] lg:!w-[22px]" /> : <Moon size={18} strokeWidth={1.75} className="lg:!h-[22px] lg:!w-[22px]" />}
+      {theme === 'dark' ? <Sun size={18} strokeWidth={1.75} /> : <Moon size={18} strokeWidth={1.75} />}
     </button>
   )
 }

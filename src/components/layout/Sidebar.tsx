@@ -11,6 +11,7 @@ import { Button } from '../ui/Button'
 import { ProfileModal } from '../ProfileModal'
 import { SystemStatusModal } from '../SystemStatusModal'
 import { ChangeLogPill, ChangeLogModal } from '../ChangeLogModal'
+import { Logo } from '../Logo'
 import { useSidebarBadges } from '../../lib/hooks/useSidebarBadges'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
@@ -294,7 +295,7 @@ function SystemStatusPill({ onClick }: { onClick: () => void }) {
 function Brand() {
   return (
     <div className="flex items-center gap-2.5 px-2">
-      <img src="https://kappa.lol/FAHnNi" alt="Calista" className="h-8 w-auto" />
+      <Logo className="h-8 w-auto" />
       <div className="leading-tight">
         <p className="text-sm font-semibold">Calista Concept</p>
         <p className="text-2xs text-ink-400">Referrals & Revenue</p>

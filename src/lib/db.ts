@@ -10,10 +10,9 @@ import type {
   NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel, LeadReminder, LeadStatus, AdminDoc, AdminDocSnippet,
   Invoice, InvoiceService, InvoiceStatus, InvoiceSettings,
   Contract, ContractTemplate, ContractStatus, CustomPlaceholderDef,
-  ContractTemplateVariant,
+  ContractTemplateVariant, DesignSettings,
 } from './types'
-import { DEFAULT_INVOICE_SETTINGS } from './types'
-import { DEFAULT_SETTINGS } from './types'
+import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
 
 const iso = () => new Date().toISOString()
 
@@ -1704,5 +1703,31 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
       .select('*').eq('number', number.trim()).maybeSingle()
     if (error) return null
     return (data || null) as Contract | null
+  },
+
+  /* ================================================================== */
+  /* DESIGN SETTINGS (platform-wide branding)                            */
+  /* ================================================================== */
+
+  async getDesignSettings(): Promise<DesignSettings> {
+    const { data, error } = await supabase!.from('design_settings')
+      .select('*').eq('id', 1).maybeSingle()
+    if (error || !data) return { ...DEFAULT_DESIGN_SETTINGS }
+    return data as DesignSettings
+  },
+
+  async getPublicDesignSettings(): Promise<DesignSettings> {
+    const { data, error } = await supabase!.from('design_settings')
+      .select('*').eq('id', 1).maybeSingle()
+    if (error || !data) return { ...DEFAULT_DESIGN_SETTINGS }
+    return data as DesignSettings
+  },
+
+  async updateDesignSettings(patch: Partial<DesignSettings>): Promise<void> {
+    const payload: Record<string, unknown> = { ...patch, updated_at: iso() }
+    delete payload.id
+    const { error } = await supabase!.from('design_settings')
+      .update(payload).eq('id', 1)
+    if (error) throw error
   },
 }

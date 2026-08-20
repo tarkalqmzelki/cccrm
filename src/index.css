@@ -175,10 +175,13 @@ body {
   .backdrop-normal { background: var(--backdrop-normal); }
   .backdrop-strong { background: var(--backdrop-strong); }
 
-  /* In dark mode, primary buttons (bg-ink) become light — flip the
-     text color to dark so they stay readable. This ONE rule handles
-     every `bg-ink text-white` pattern across the app. */
-  .dark .bg-ink { color: rgb(15 15 15); }
+  /* In dark mode, primary buttons + active tab pills (bg-ink) become
+     a soft dark gray with light text — not stark white (which was
+     jarring).  The hover/active states are overridden too because
+     --ink-800/900 variables are inverted for text use in dark mode. */
+  .dark .bg-ink { background-color: rgb(58 58 58); color: rgb(240 240 240); }
+  .dark .hover\:bg-ink-800:hover { background-color: rgb(72 72 72); }
+  .dark .active\:bg-ink-900:active { background-color: rgb(42 42 42); }
 
   /* Switch knobs — in dark mode the white knob becomes dark */
   .dark [role="switch"] span,

@@ -178,8 +178,9 @@ export default function Leaderboard() {
 function PodiumCard({ row, rank, category }: { row: any; rank: number; category: Category }) {
   const value = category === 'revenue' ? row.revenue : category === 'deals' ? row.deals : row.totalEarnings
   const isFirst = rank === 1
+  const isSecond = rank === 2
   const icon = isFirst ? <Crown size={20} strokeWidth={1.75} /> : rank === 2 ? <Medal size={18} strokeWidth={1.75} /> : <Medal size={18} strokeWidth={1.75} />
-  const bgClass = isFirst ? 'bg-ink text-white' : rank === 2 ? 'bg-ink-100' : 'bg-ink-50'
+  const bgClass = isFirst ? 'bg-ink text-white dark:text-ink-100' : isSecond ? 'bg-ink-100' : 'bg-ink-50'
   const heightClass = isFirst ? 'pt-8 pb-8' : 'pt-6 pb-6'
 
   return (
@@ -189,20 +190,24 @@ function PodiumCard({ row, rank, category }: { row: any; rank: number; category:
       transition={{ duration: 0.4, delay: rank * 0.1, ease: [0.22, 1, 0.36, 1] }}
       className={`relative rounded-2xl ${bgClass} ${heightClass} flex flex-col items-center justify-center text-center overflow-hidden`}
     >
-      {/* Glow for #1 */}
+      {/* Glow for #1 — animated pulse behind the content */}
       {isFirst && (
-        <div className="pointer-events-none absolute inset-0 opacity-20">
-          <div className="absolute -top-8 left-1/2 -translate-x-1/2 h-24 w-24 rounded-full bg-white blur-2xl" />
-        </div>
+        <motion.div
+          className="pointer-events-none absolute inset-0 opacity-30"
+          animate={{ opacity: [0.15, 0.35, 0.15] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2 h-24 w-24 rounded-full bg-ink-100 blur-2xl dark:bg-ink-300" />
+        </motion.div>
       )}
       {/* Rank badge */}
-      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-full ${isFirst ? 'bg-white text-[#0A0A0A]' : 'bg-surface text-ink-400'}`}>
+      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-full ${isFirst ? 'bg-surface text-ink-400 dark:text-ink-300' : 'bg-surface text-ink-400'}`}>
         {icon}
       </div>
       <Avatar name={row.profile.full_name} color={row.profile.avatar_color} url={row.profile.avatar_url} size={isFirst ? 48 : 36} />
-      <p className={`mt-2 text-sm font-semibold truncate max-w-full px-2 ${isFirst ? 'text-white' : 'text-ink'}`}>{row.profile.full_name}</p>
-      <p className={`text-2xs ${isFirst ? 'text-white/70' : 'text-ink-400'}`}>{row.profile.role} · {row.level}</p>
-      <p className={`mt-2 num text-lg font-bold ${isFirst ? 'text-white' : 'text-ink'}`}>
+      <p className={`mt-2 text-sm font-semibold truncate max-w-full px-2 ${isFirst ? 'text-white dark:text-ink-100' : 'text-ink'}`}>{row.profile.full_name}</p>
+      <p className={`text-2xs ${isFirst ? 'text-white/70 dark:text-ink-400' : 'text-ink-400'}`}>{row.profile.role} · {row.level}</p>
+      <p className={`mt-2 num text-lg font-bold ${isFirst ? 'text-white dark:text-ink-100' : 'text-ink'}`}>
         {category === 'deals' ? `${value} deals` : eur(value)}
       </p>
     </motion.div>
