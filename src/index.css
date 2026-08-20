@@ -251,6 +251,19 @@ body {
     margin: 8mm 7mm 14mm 7mm;
   }
 
+  /* Contracts get their OWN page box.  The contract letterhead is a
+   * `position: fixed` header (logo + barcode, occupies ~2–15mm from
+   * the paper top) that repeats on EVERY page, and the fixed footer
+   * occupies ~2–11mm from the paper bottom.  The default 8mm top
+   * margin let the template text run under the letterhead on pages
+   * 2+.  A 20mm top / 16mm bottom margin keeps the content area
+   * clear of both fixed bands on every printed page.  Invoices are
+   * unaffected — they keep the default @page above. */
+  @page cccontract {
+    size: A4;
+    margin: 20mm 7mm 16mm 7mm;
+  }
+
   /* Generic clean card look used inside the formal document */
   .print-card {
     box-shadow: none !important;

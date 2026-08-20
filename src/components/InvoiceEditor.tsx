@@ -64,6 +64,7 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
   const [vatIncluded, setVatIncluded] = useState(false)
   const [vatPct, setVatPct] = useState('0')
   const [freeformNotes, setFreeformNotes] = useState('')
+  const [contractRef, setContractRef] = useState('')
   const [items, setItems] = useState<LineItem[]>([])
   const [saving, setSaving] = useState(false)
 
@@ -82,8 +83,13 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
 
   // Helper to build the default QR payload from settings
   function buildQrPayload(inv?: Invoice): string {
-    if (inv) return `${issuerSettings?.qr_verify_base_url ?? 'https://calistaconcept.eu/invoice/verify'}/${inv.id}`
-    return issuerSettings?.qr_verify_base_url ?? 'https://calistaconcept.eu/invoice/verify'
+    // Prefer the admin-configured base URL from invoice_settings;
+    // fall back to the current browser origin (the deployed domain)
+    // so the QR always points to the real verify route.
+    const base = issuerSettings?.qr_verify_base_url
+      || `${typeof window !== 'undefined' ? window.location.origin : ''}/invoice/verify`
+    if (inv) return `${base}/${inv.id}`
+    return base
   }
 
   useEffect(() => {
@@ -102,6 +108,7 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
       // Parse notes → freeform + extras
       const { freeform, extras: parsed } = parseInvoiceNotes(editing.notes)
       setFreeformNotes(freeform)
+      setContractRef(editing.contract_ref ?? '')
       setExtras({ ...DEFAULT_EXTRAS, ...parsed })
       // Auto-open any section that has data so the admin sees it
       setShowSection({
@@ -127,6 +134,7 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
       setStatus('draft')
       setVatIncluded(false); setVatPct('0')
       setFreeformNotes('')
+      setContractRef('')
       setItems([{ name: '', description: '', quantity: 1, unit_price: 0 }])
       // Prefill optional sections from the saved invoice settings so
       // the admin doesn't retype bank/legal/signature on every invoice.
@@ -196,10 +204,11 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
       if (cleanExtras.secondary_section && !cleanExtras.secondary_section.content.trim() && !cleanExtras.secondary_section.type.trim()) cleanExtras.secondary_section = null
       if (cleanExtras.qr_enabled && !cleanExtras.qr_payload.trim()) {
         // Auto-fill with the default verification URL when QR is on but
-        // the admin didn't customise the payload.
+        // the admin didn't customise the payload.  For a new invoice we
+        // don't know the ID yet — we patch it after createInvoice returns.
         cleanExtras.qr_payload = editing ? buildQrPayload(editing) : ''
       }
-      const notes = serializeInvoiceNotes(freeformNotes.trim(), cleanExtras)
+      let notes = serializeInvoiceNotes(freeformNotes.trim(), cleanExtras)
 
       if (editing) {
         await db.updateInvoice(editing.id, {
@@ -207,7 +216,7 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
           billed_email: billedEmail.trim(), billed_vat: billedVat.trim(),
           issue_date: issueDate, due_date: dueDate || null,
           status, vat_included: vatIncluded, vat_pct: Number(vatPct) || 0,
-          notes,
+          notes, contract_ref: contractRef.trim(),
         })
         await db.setInvoiceServices(editing.id, cleanItems)
         push({ tone: 'success', title: 'Invoice updated' })
@@ -217,9 +226,16 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
           billed_email: billedEmail.trim(), billed_vat: billedVat.trim(),
           issue_date: issueDate, due_date: dueDate || null,
           status, vat_included: vatIncluded, vat_pct: Number(vatPct) || 0,
-          notes,
+          notes, contract_ref: contractRef.trim(),
         })
         await db.setInvoiceServices(inv.id, cleanItems)
+        // If QR is enabled but we didn't have the ID when building the
+        // payload, patch the notes now that we know the invoice ID.
+        if (cleanExtras.qr_enabled && !cleanExtras.qr_payload.trim()) {
+          cleanExtras.qr_payload = buildQrPayload(inv)
+          notes = serializeInvoiceNotes(freeformNotes.trim(), cleanExtras)
+          await db.updateInvoice(inv.id, { notes })
+        }
         push({ tone: 'success', title: 'Invoice created', desc: inv.number })
       }
       onSaved()
@@ -350,12 +366,20 @@ export function InvoiceEditor({ open, onClose, onSaved, editing, nextNumber }: P
           </div>
         </div>
 
-        {/* Status + freeform notes */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr]">
+        {/* Status + contract reference + freeform notes */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[160px_1fr_1fr]">
           <Field label="Status">
             <Select value={status} onChange={(e) => setStatus(e.target.value as InvoiceStatus)}>
               {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{INVOICE_STATUS_META[s].label}</option>)}
             </Select>
+          </Field>
+          <Field label="Linked contract" hint="Reference a contract number (optional)">
+            <Input
+              value={contractRef}
+              onChange={(e) => setContractRef(e.target.value)}
+              placeholder="CC-CTR-2026-XXXXXX"
+              className="font-mono text-sm"
+            />
           </Field>
           <Field label="Notes / payment terms" hint="Optional — printed on the invoice">
             <Textarea value={freeformNotes} onChange={(e) => setFreeformNotes(e.target.value)} rows={2} placeholder="Payment due within 30 days by bank transfer." />

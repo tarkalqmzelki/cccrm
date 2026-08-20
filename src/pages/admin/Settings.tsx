@@ -18,10 +18,12 @@ import { LogBook } from '../../components/LogBook'
 import { ChangeLogManager } from '../../components/ChangeLogManager'
 import { AdminDocumentation } from '../../components/AdminDocumentation'
 import { BroadcastManager } from '../../components/BroadcastManager'
+import { ContractTemplateManager } from '../../components/ContractTemplateManager'
 
 type Category =
   | 'commissions'
   | 'invoice-settings'
+  | 'contract-templates'
   | 'notif-preferences'
   | 'notif-templates'
   | 'notif-log'
@@ -42,6 +44,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'commissions',       label: 'Commissions',       icon: Settings2,  group: 'Commissions' },
   { id: 'invoice-settings',  label: 'Invoice settings',  icon: InvoiceIcon, group: 'Commissions' },
+  { id: 'contract-templates', label: 'Contract templates', icon: FileText,  group: 'Commissions' },
   { id: 'notif-preferences',  label: 'Your preferences',  icon: Bell,       group: 'Notifications' },
   { id: 'notif-templates',    label: 'Templates',         icon: Bell,       group: 'Notifications' },
   { id: 'broadcast',          label: 'Broadcast',         icon: Megaphone,  group: 'Notifications' },
@@ -56,6 +59,7 @@ const NAV_ITEMS: NavItem[] = [
 const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
   commissions:       { title: 'Commissions',                      desc: 'Configure level thresholds, commission rates, and referral bonuses.' },
   'invoice-settings': { title: 'Invoice settings',                desc: 'Your business identity + default templates that prefill every new invoice. Update once, reuse on every invoice.' },
+  'contract-templates': { title: 'Contract templates',             desc: 'Create and edit contract text templates with {placeholders}. Used when generating contracts.' },
   'notif-preferences': { title: 'Your notification preferences',  desc: 'Enable or disable each alert type for your own account.' },
   'notif-templates':   { title: 'Notification templates',         desc: 'Edit the title and body format applied to every push notification. Disabling a type here suppresses it for everyone.' },
   broadcast:           { title: 'Broadcast announcement',         desc: 'Send a push notification to every active user. Toggle the channel on/off in Templates.' },
@@ -224,6 +228,14 @@ export default function SettingsPage() {
           {/* ---------- Invoice settings ---------- */}
           {active === 'invoice-settings' && (
             <InvoiceSettingsPanel />
+          )}
+
+          {/* ---------- Contract templates ---------- */}
+          {active === 'contract-templates' && (
+            <Card>
+              <CardHeader title="Contract templates" desc="Create and edit contract text templates with {placeholders}. Used when generating contracts." />
+              <ContractTemplateManager />
+            </Card>
           )}
 
           {/* ---------- Notifications: Preferences ---------- */}

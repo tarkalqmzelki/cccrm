@@ -9,6 +9,7 @@ import type {
   MessagePriority, MessageFolder,
   NotificationKey, NotificationPreference, NotificationTemplate, NotificationTone, PushSubscription, PushLogEntry, ErrorLogEntry, ChangelogEntry, ChangelogLabel, LeadReminder, LeadStatus, AdminDoc, AdminDocSnippet,
   Invoice, InvoiceService, InvoiceStatus, InvoiceSettings,
+  Contract, ContractTemplate, ContractStatus, CustomPlaceholderDef,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS } from './types'
 import { DEFAULT_SETTINGS } from './types'
@@ -1345,6 +1346,7 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     vat_pct?: number
     currency?: string
     notes?: string
+    contract_ref?: string
     created_by?: string | null
   }): Promise<Invoice> {
     const { data, error } = await supabase!.from('invoices').insert({
@@ -1360,6 +1362,7 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
       vat_pct: inv.vat_pct ?? 0,
       currency: inv.currency ?? 'EUR',
       notes: inv.notes ?? '',
+      contract_ref: inv.contract_ref ?? '',
       created_by: inv.created_by ?? null,
     }).select().single()
     if (error) throw error
@@ -1379,6 +1382,7 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     vat_pct: number
     currency: string
     notes: string
+    contract_ref: string
     finance_entry_id: string | null
   }>): Promise<void> {
     const { error } = await supabase!.from('invoices')
@@ -1514,5 +1518,136 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
       .select('*').eq('id', 1).maybeSingle()
     if (error || !data) return { ...DEFAULT_INVOICE_SETTINGS }
     return data as InvoiceSettings
+  },
+
+  /* ================================================================== */
+  /* CONTRACT TEMPLATES                                                 */
+  /* ================================================================== */
+
+  async listContractTemplates(): Promise<ContractTemplate[]> {
+    const { data, error } = await supabase!.from('contract_templates')
+      .select('*').order('name', { ascending: true })
+    if (error) throw error
+    return (data || []) as ContractTemplate[]
+  },
+
+  async createContractTemplate(t: {
+    name: string
+    description?: string
+    body: string
+    custom_placeholders?: CustomPlaceholderDef[]
+  }): Promise<void> {
+    const { error } = await supabase!.from('contract_templates').insert({
+      name: t.name,
+      description: t.description ?? '',
+      body: t.body,
+      custom_placeholders: t.custom_placeholders ?? [],
+    })
+    if (error) throw error
+  },
+
+  async updateContractTemplate(id: string, patch: Partial<{
+    name: string
+    description: string
+    body: string
+    custom_placeholders: CustomPlaceholderDef[]
+  }>): Promise<void> {
+    const { error } = await supabase!.from('contract_templates')
+      .update({ ...patch, updated_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteContractTemplate(id: string): Promise<void> {
+    const { error } = await supabase!.from('contract_templates').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ================================================================== */
+  /* CONTRACTS                                                          */
+  /* ================================================================== */
+
+  async listContracts(): Promise<Contract[]> {
+    const { data, error } = await supabase!.from('contracts')
+      .select('*').order('issue_date', { ascending: false }).order('number', { ascending: false })
+    if (error) throw error
+    return (data || []) as Contract[]
+  },
+
+  async getContract(id: string): Promise<Contract | null> {
+    const { data, error } = await supabase!.from('contracts')
+      .select('*').eq('id', id).single()
+    if (error) return null
+    return data as Contract
+  },
+
+  async createContract(c: {
+    number: string
+    template_id?: string | null
+    status?: ContractStatus
+    counterparty_name: string
+    counterparty_company?: string
+    counterparty_address?: string
+    counterparty_phone?: string
+    counterparty_email?: string
+    counterparty_vat?: string
+    issue_date: string
+    start_date?: string | null
+    end_date?: string | null
+    notes?: string
+    created_by?: string | null
+  }): Promise<Contract> {
+    const { data, error } = await supabase!.from('contracts').insert({
+      number: c.number,
+      template_id: c.template_id ?? null,
+      status: c.status ?? 'draft',
+      counterparty_name: c.counterparty_name,
+      counterparty_company: c.counterparty_company ?? '',
+      counterparty_address: c.counterparty_address ?? '',
+      counterparty_phone: c.counterparty_phone ?? '',
+      counterparty_email: c.counterparty_email ?? '',
+      counterparty_vat: c.counterparty_vat ?? '',
+      issue_date: c.issue_date,
+      start_date: c.start_date ?? null,
+      end_date: c.end_date ?? null,
+      notes: c.notes ?? '',
+      created_by: c.created_by ?? null,
+    }).select().single()
+    if (error) throw error
+    return data as Contract
+  },
+
+  async updateContract(id: string, patch: Partial<{
+    number: string
+    template_id: string | null
+    status: ContractStatus
+    counterparty_name: string
+    counterparty_company: string
+    counterparty_address: string
+    counterparty_phone: string
+    counterparty_email: string
+    counterparty_vat: string
+    issue_date: string
+    start_date: string | null
+    end_date: string | null
+    notes: string
+  }>): Promise<void> {
+    const { error } = await supabase!.from('contracts')
+      .update({ ...patch, updated_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteContract(id: string): Promise<void> {
+    const { error } = await supabase!.from('contracts').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /** Random contract number in the format CC-CTR-YYYY-XXXXXX where
+   *  XXXXXX is a 6-char alphanumeric (uppercase, no ambiguous chars). */
+  randomContractNumber(): string {
+    const year = new Date().getFullYear()
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let code = ''
+    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)]
+    return `CC-CTR-${year}-${code}`
   },
 }

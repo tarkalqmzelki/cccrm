@@ -19,6 +19,7 @@ import { openContextMenu, type CtxItem } from '../components/ui/ContextMenu'
 import { useAuth } from '../context/AuthContext'
 import { FormalBalanceSheetDocument } from '../components/FormalBalanceSheetDocument'
 import { InvoicesTab } from '../components/InvoicesTab'
+import { ContractsTab } from '../components/ContractsTab'
 import {
   FINANCE_CATEGORY_META,
   FINANCE_REVENUE_CATEGORIES,
@@ -31,7 +32,7 @@ import { eur, eurFull, dateShort, dateLong } from '../lib/format'
 /* Helpers                                                            */
 /* ------------------------------------------------------------------ */
 type PeriodPreset = 'month' | 'quarter' | 'year' | 'all' | 'custom'
-type SubTab = 'finance' | 'invoices'
+type SubTab = 'finance' | 'invoices' | 'contracts'
 
 const NOW = new Date()
 
@@ -188,6 +189,13 @@ export default function Finances() {
         >
           {subtab === 'invoices' && <motion.span layoutId="fin-subtab" className="absolute inset-0 rounded-lg bg-ink" transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} />}
           <span className="relative flex items-center gap-1.5"><InvoiceIcon size={15} strokeWidth={1.75} />Invoices</span>
+        </button>
+        <button
+          onClick={() => setSubtab('contracts')}
+          className={`relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${subtab === 'contracts' ? 'text-white' : 'text-ink-500 hover:text-ink'}`}
+        >
+          {subtab === 'contracts' && <motion.span layoutId="fin-subtab" className="absolute inset-0 rounded-lg bg-ink" transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} />}
+          <span className="relative flex items-center gap-1.5"><FileText size={15} strokeWidth={1.75} />Contracts</span>
         </button>
       </div>
 
@@ -455,8 +463,16 @@ export default function Finances() {
         <InvoicesTab
           refreshKey={invoiceRefreshKey}
           onInvoicesChanged={() => {
-            // Bump the key so the InvoicesTab reloads, AND reload the
-            // finance entries so the new revenue row shows up.
+            setInvoiceRefreshKey((k) => k + 1)
+            reload()
+          }}
+        />
+      )}
+
+      {subtab === 'contracts' && (
+        <ContractsTab
+          refreshKey={invoiceRefreshKey}
+          onContractsChanged={() => {
             setInvoiceRefreshKey((k) => k + 1)
             reload()
           }}

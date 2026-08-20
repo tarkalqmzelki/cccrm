@@ -689,6 +689,9 @@ export interface Invoice {
   vat_pct: number
   currency: string
   notes: string
+  /** Reference to a contract number (human-readable link, e.g.
+   *  "CC-CTR-2026-A7F3B2") — set from the invoice editor. */
+  contract_ref: string
   finance_entry_id: string | null
   created_at: string
   updated_at: string
@@ -753,3 +756,87 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   qr_verify_base_url: 'https://calistaconcept.eu/invoice/verify',
   updated_at: '',
 }
+
+// =====================================================================
+// CONTRACTS
+// =====================================================================
+
+export type ContractStatus = 'draft' | 'active' | 'expired' | 'terminated' | 'void'
+
+export const CONTRACT_STATUS_META: Record<ContractStatus, { label: string; tone: 'neutral' | 'info' | 'warn' | 'pos' | 'neg' }> = {
+  draft:      { label: 'Draft',      tone: 'neutral' },
+  active:     { label: 'Active',     tone: 'pos'    },
+  expired:    { label: 'Expired',    tone: 'warn'   },
+  terminated: { label: 'Terminated', tone: 'neg'    },
+  void:       { label: 'Void',       tone: 'neg'    },
+}
+
+export const CONTRACT_STATUSES = Object.keys(CONTRACT_STATUS_META) as ContractStatus[]
+
+export interface ContractTemplate {
+  id: string
+  name: string
+  description: string
+  body: string
+  /** Admin-defined custom placeholders (e.g. {payable}, {delivery_date}).
+   *  Each is { key, label, type } — the key is used as {key} in the
+   *  template body, the label is shown in the contract editor, the
+   *  type controls the input.  Stored as JSONB in the DB. */
+  custom_placeholders: CustomPlaceholderDef[]
+  created_at: string
+  updated_at: string
+  created_by: string | null
+}
+
+/** Definition of a custom placeholder on a contract template. */
+export interface CustomPlaceholderDef {
+  key: string
+  label: string
+  type: 'text' | 'number' | 'date' | 'textarea'
+}
+
+export interface Contract {
+  id: string
+  number: string
+  template_id: string | null
+  status: ContractStatus
+  counterparty_name: string
+  counterparty_company: string
+  counterparty_address: string
+  counterparty_phone: string
+  counterparty_email: string
+  counterparty_vat: string
+  issue_date: string
+  start_date: string | null
+  end_date: string | null
+  notes: string
+  finance_entry_id: string | null
+  created_at: string
+  updated_at: string
+  created_by: string | null
+}
+
+/** Placeholders that can be used inside a contract template body.
+ *  They're filled in from the contract's counterparty data + the
+ *  issuer settings when the PDF is rendered. */
+export const CONTRACT_PLACEHOLDERS = [
+  '{contract_number}',
+  '{issue_date}',
+  '{start_date}',
+  '{end_date}',
+  '{counterparty_name}',
+  '{counterparty_company}',
+  '{counterparty_address}',
+  '{counterparty_phone}',
+  '{counterparty_email}',
+  '{counterparty_vat}',
+  '{company_name}',
+  '{company_subname}',
+  '{company_address}',
+  '{company_email}',
+  '{company_phone}',
+  '{company_website}',
+  '{company_vat}',
+  '{company_id}',
+  '{current_date}',
+]

@@ -227,15 +227,16 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged }: Props) {
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ink-50 text-ink">
                     <FileText size={16} strokeWidth={1.75} />
                   </div>
-                  <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-semibold font-mono">{inv.number}</p>
                       <Badge tone={meta.tone} dot>{meta.label}</Badge>
                     </div>
                     <p className="truncate text-2xs text-ink-400">
                       {inv.billed_to} · {dateShort(inv.issue_date)}{inv.due_date ? ` · due ${dateShort(inv.due_date)}` : ''}
+                      {inv.contract_ref ? ` · contract ${inv.contract_ref}` : ''}
                     </p>
-                  </div>
+                    </div>
                   <span className="num shrink-0 text-sm font-semibold">{eurFull(total)}</span>
                   <div className="flex shrink-0 items-center gap-1">
                     <button onClick={() => openPreview(inv)} title="Preview" className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100 hover:text-ink-600">
