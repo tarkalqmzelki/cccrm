@@ -41,25 +41,32 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
     : ''
 
   return createPortal(
-    <div
-      className="print-document print-only"
-      style={{
-        fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
-        color: '#000',
-        width: '100%',
-        padding: 0,
-        // Use the contract-specific page box (see index.css @page
-        // cccontract) — gives every printed page a 20mm top margin
-        // and 16mm bottom margin so the fixed letterhead (logo +
-        // barcode) and fixed footer never overlap the template text.
-        page: 'cccontract',
-        fontSize: '11pt',
-        lineHeight: 1.55,
-        boxSizing: 'border-box',
-        background: '#fff',
-        position: 'relative',
-      }}
-    >
+    <>
+      {/* While this contract document is mounted, override the print
+          page margins.  The fixed letterhead (logo + barcode) occupies
+          ~2–15mm from the paper top and the fixed footer ~2–11mm from
+          the bottom on EVERY printed page — the default 8mm/14mm
+          margins let the template text run under them.  A plain
+          `@page` override (no named pages — flaky in some browsers)
+          keeps the content clear of both bands.  Scoped to @media
+          print so the on-screen preview is unaffected, and removed
+          automatically when this component unmounts — invoices and
+          the balance sheet keep their own margins. */}
+      <style>{'@media print { @page { margin: 20mm 7mm 16mm 7mm; } }'}</style>
+      <div
+        className="print-document print-only"
+        style={{
+          fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
+          color: '#000',
+          width: '100%',
+          padding: 0,
+          fontSize: '11pt',
+          lineHeight: 1.55,
+          boxSizing: 'border-box',
+          background: '#fff',
+          position: 'relative',
+        }}
+      >
       {/* ============================================================ */}
       {/* FIXED HEADER — repeats on every printed page                  */}
       {/* Logo on page 1 only is tricky with pure CSS; we put the logo  */}
@@ -220,7 +227,8 @@ export function FormalContractDocument({ contract, template, settings }: Props) 
           <span>{settings.company_vat ? `VAT: ${settings.company_vat}` : ''}</span>
         </div>
       </div>
-    </div>,
+      </div>
+    </>,
     document.body,
   )
 }
