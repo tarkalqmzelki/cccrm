@@ -25,8 +25,8 @@ interface Props {
 const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-3xl' }
 
 const backdropClass = {
-  normal: 'bg-ink-900/30',
-  strong: 'bg-ink-900/60',
+  normal: 'backdrop-normal',
+  strong: 'backdrop-strong',
 }
 
 export function Modal({ open, onClose, title, desc, children, footer, size = 'md', backdrop = 'normal', className = '' }: Props) {

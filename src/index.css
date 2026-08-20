@@ -2,12 +2,96 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===================================================================== */
+/* THEME VARIABLES                                                        */
+/* ===================================================================== */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: light;
+
+  /* ink scale — light mode (dark text on light bg) */
+  --ink: 10 10 10;
+  --ink-50: 245 245 245;
+  --ink-100: 229 229 229;
+  --ink-200: 212 212 212;
+  --ink-300: 163 163 163;
+  --ink-400: 115 115 115;
+  --ink-500: 82 82 82;
+  --ink-600: 64 64 64;
+  --ink-700: 38 38 38;
+  --ink-800: 23 23 23;
+  --ink-900: 10 10 10;
+
+  /* surfaces */
+  --canvas: 250 250 250;
+  --surface: 255 255 255;
+  --line: 236 236 236;
+
+  /* status accents */
+  --pos: 22 163 74;
+  --pos-bg: 240 253 244;
+  --neg: 220 38 38;
+  --neg-bg: 254 242 242;
+  --warn: 217 119 6;
+  --warn-bg: 255 251 235;
+  --info: 37 99 235;
+  --info-bg: 239 246 255;
+
+  /* shadows + glass */
+  --shadow-glass: rgba(10, 10, 10, 0.10);
+  --glass-bg: rgba(255, 255, 255, 0.60);
+  --glass-border: rgba(255, 255, 255, 0.50);
+  --glass-strong-bg: rgba(255, 255, 255, 0.72);
+  --glass-strong-border: rgba(255, 255, 255, 0.60);
+  --backdrop-normal: rgba(10, 10, 10, 0.30);
+  --backdrop-strong: rgba(10, 10, 10, 0.60);
 }
 
+.dark {
+  color-scheme: dark;
+
+  /* ink scale — dark mode (light text on dark bg) */
+  --ink: 240 240 240;
+  --ink-50: 26 26 26;
+  --ink-100: 31 31 31;
+  --ink-200: 42 42 42;
+  --ink-300: 82 82 82;
+  --ink-400: 115 115 115;
+  --ink-500: 140 140 140;
+  --ink-600: 170 170 170;
+  --ink-700: 200 200 200;
+  --ink-800: 225 225 225;
+  --ink-900: 240 240 240;
+
+  /* surfaces */
+  --canvas: 15 15 15;
+  --surface: 23 23 23;
+  --line: 38 38 38;
+
+  /* status accents — slightly brighter for dark bg contrast */
+  --pos: 74 222 128;
+  --pos-bg: 20 47 32;
+  --neg: 248 113 113;
+  --neg-bg: 55 22 22;
+  --warn: 251 191 36;
+  --warn-bg: 51 40 15;
+  --info: 96 165 250;
+  --info-bg: 20 34 58;
+
+  /* shadows + glass */
+  --shadow-glass: rgba(0, 0, 0, 0.40);
+  --glass-bg: rgba(23, 23, 23, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-strong-bg: rgba(23, 23, 23, 0.80);
+  --glass-strong-border: rgba(255, 255, 255, 0.08);
+  --backdrop-normal: rgba(0, 0, 0, 0.55);
+  --backdrop-strong: rgba(0, 0, 0, 0.70);
+}
+
+/* ===================================================================== */
+/* BASE                                                                   */
+/* ===================================================================== */
 * {
   -webkit-tap-highlight-color: transparent;
 }
@@ -20,8 +104,8 @@ body,
 
 body {
   font-family: 'Inter', 'Geist', system-ui, sans-serif;
-  background: #fafafa;
-  color: #0a0a0a;
+  background: rgb(var(--canvas));
+  color: rgb(var(--ink));
   font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -30,50 +114,36 @@ body {
 
 @layer base {
   :focus-visible {
-    outline: 2px solid #0a0a0a;
+    outline: 2px solid rgb(var(--ink));
     outline-offset: 2px;
     border-radius: 4px;
   }
-  button {
-    cursor: pointer;
-  }
-  button:disabled {
-    cursor: not-allowed;
-  }
-  ::selection {
-    background: #0a0a0a;
-    color: #fff;
-  }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  ::selection { background: rgb(var(--ink)); color: rgb(var(--canvas)); }
 
-  /* iOS Safari auto-zooms into any field with font-size < 16px, which
-   * breaks the app-like feel on phones. Force 16px on touch devices. */
+  /* iOS Safari auto-zooms into any field with font-size < 16px. */
   @media (pointer: coarse), (max-width: 767px) {
-    input,
-    select,
-    textarea {
-      font-size: 16px !important;
-    }
+    input, select, textarea { font-size: 16px !important; }
   }
 }
 
 @layer components {
   /* Pulse card */
-  .card {
-    @apply bg-surface border border-line rounded-xl p-5;
-  }
+  .card { @apply bg-surface border border-line rounded-xl p-5; }
 
-  /* Glass surfaces — iOS liquid glass for overlays only */
+  /* Glass surfaces — translucent overlay backgrounds */
   .glass {
-    background: rgba(255, 255, 255, 0.6);
+    background: var(--glass-bg);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--glass-border);
   }
   .glass-strong {
-    background: rgba(255, 255, 255, 0.72);
+    background: var(--glass-strong-bg);
     backdrop-filter: saturate(180%) blur(28px);
     -webkit-backdrop-filter: saturate(180%) blur(28px);
-    border: 1px solid rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--glass-strong-border);
   }
   .glass-dark {
     background: rgba(10, 10, 10, 0.62);
@@ -83,20 +153,16 @@ body {
   }
 
   /* Skeleton shimmer */
-  .skeleton {
-    @apply relative overflow-hidden bg-ink-100;
-  }
+  .skeleton { @apply relative overflow-hidden bg-ink-100; }
   .skeleton::after {
     content: '';
     @apply absolute inset-0;
     transform: translateX(-100%);
-    background: linear-gradient(
-      90deg,
-      transparent 0,
-      rgba(255, 255, 255, 0.55) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg, transparent 0, rgba(255,255,255,0.55) 50%, transparent 100%);
     animation: shimmer 1.6s infinite;
+  }
+  .dark .skeleton::after {
+    background: linear-gradient(90deg, transparent 0, rgba(255,255,255,0.06) 50%, transparent 100%);
   }
 
   .num {
@@ -104,44 +170,51 @@ body {
     font-feature-settings: 'tnum';
   }
 
-  /* Soft pulse for status dots / bubbles */
+  /* Backdrop utilities — explicit rgba (not alpha-modified vars)
+     so they're always dark regardless of the ink-900 variable flip. */
+  .backdrop-normal { background: var(--backdrop-normal); }
+  .backdrop-strong { background: var(--backdrop-strong); }
+
+  /* In dark mode, primary buttons (bg-ink) become light — flip the
+     text color to dark so they stay readable. This ONE rule handles
+     every `bg-ink text-white` pattern across the app. */
+  .dark .bg-ink { color: rgb(15 15 15); }
+
+  /* Switch knobs — in dark mode the white knob becomes dark */
+  .dark [role="switch"] span,
+  .dark button[type="button"] > span.bg-white {
+    background-color: rgb(15 15 15);
+  }
+
   @keyframes status-pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
     50%      { transform: scale(1.35); opacity: 0.55; }
   }
-  .status-pulse {
-    animation: status-pulse 1.8s ease-in-out infinite;
-  }
+  .status-pulse { animation: status-pulse 1.8s ease-in-out infinite; }
 
   @keyframes status-ring {
     0%   { transform: scale(0.6); opacity: 0.7; }
     100% { transform: scale(2.2); opacity: 0; }
   }
-  .status-ring {
-    animation: status-ring 1.8s ease-out infinite;
-  }
+  .status-ring { animation: status-ring 1.8s ease-out infinite; }
 }
 
 /* Thin, calm scrollbars */
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-thumb {
-  background: #e5e5e5;
+  background: rgb(var(--ink-200));
   border-radius: 999px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #d4d4d4;
+  background: rgb(var(--ink-300));
   background-clip: content-box;
 }
 
-/* ------------------------------------------------------------------ */
-/* Markdown rendering — admin documentation                            */
-/* Scope is .md so it doesn't leak into the rest of the app.          */
-/* ------------------------------------------------------------------ */
+/* ===================================================================== */
+/* Markdown rendering — admin documentation                              */
+/* ===================================================================== */
 .md h1 { font-size: 1.5rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; }
 .md h2 { font-size: 1.25rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }
 .md h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.4rem; }
@@ -151,25 +224,25 @@ body {
 .md ul { list-style: disc; }
 .md ol { list-style: decimal; }
 .md li { margin: 0.25rem 0; line-height: 1.6; }
-.md a { color: #0a0a0a; text-decoration: underline; text-underline-offset: 2px; }
-.md a:hover { color: #404040; }
+.md a { color: rgb(var(--ink)); text-decoration: underline; text-underline-offset: 2px; }
+.md a:hover { color: rgb(var(--ink-600)); }
 .md strong { font-weight: 600; }
 .md em { font-style: italic; }
 .md blockquote {
-  border-left: 3px solid #d4d4d4;
+  border-left: 3px solid rgb(var(--ink-200));
   padding-left: 1rem;
   margin: 0.75rem 0;
-  color: #525252;
+  color: rgb(var(--ink-500));
   font-style: italic;
 }
-.md hr { border: none; border-top: 1px solid #ececec; margin: 1rem 0; }
+.md hr { border: none; border-top: 1px solid rgb(var(--line)); margin: 1rem 0; }
 .md code {
   font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
   font-size: 0.85em;
-  background: #f5f5f5;
+  background: rgb(var(--ink-100));
   padding: 0.15em 0.35em;
   border-radius: 4px;
-  color: #0a0a0a;
+  color: rgb(var(--ink));
 }
 .md pre {
   background: #0a0a0a;
@@ -195,69 +268,30 @@ body {
   font-size: 0.9rem;
 }
 .md th, .md td {
-  border: 1px solid #ececec;
+  border: 1px solid rgb(var(--line));
   padding: 0.5rem 0.75rem;
   text-align: left;
 }
-.md th { background: #f5f5f5; font-weight: 600; }
-.md tbody tr:nth-child(even) { background: #fafafa; }
+.md th { background: rgb(var(--ink-50)); font-weight: 600; }
+.md tbody tr:nth-child(even) { background: rgb(var(--canvas)); }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 
-/* ---- Print styles for official balance sheet ----
- *
- * Strategy: when printing, we hide the entire app (#root) and render
- * only the dedicated .print-document element, which lives outside the
- * normal on-screen UI. The on-screen modal preview is marked .no-print
- * so users see a friendly in-platform preview, but the actual PDF that
- * comes out of window.print() is the formal SEC 10-K-style document.
- */
-.print-only {
-  display: none;
-}
+/* ---- Print styles ---- */
+.print-only { display: none; }
 
 @media print {
-  body {
-    background: #fff !important;
-  }
-
-  /* Hide the entire SPA root, then opt back in only the formal document */
-  #root {
-    display: none !important;
-  }
-  .print-document {
-    display: block !important;
-    position: static !important;
-  }
-
-  /* Back-compat with any legacy .no-print helpers inside the app */
-  .no-print {
-    display: none !important;
-  }
-
-  /* Page setup — A4, tight print-safe margins per invoice spec:
-     8mm top, 7mm sides (gives ~196mm content width), 14mm bottom
-     (reserves space for the fixed footer on every printed page).
-     NOTE: contracts override these margins DYNAMICALLY — when a
-     FormalContractDocument is mounted it injects a <style> tag with
-     bigger print margins (20mm top / 16mm bottom) so its fixed
-     letterhead + footer never overlap the template text.  The
-     override is removed when the contract preview unmounts, so
-     invoices / balance sheets are unaffected. */
-  @page {
-    size: A4;
-    margin: 8mm 7mm 14mm 7mm;
-  }
-
-  /* Generic clean card look used inside the formal document */
+  body { background: #fff !important; }
+  #root { display: none !important; }
+  .print-document { display: block !important; position: static !important; }
+  .no-print { display: none !important; }
+  @page { size: A4; margin: 8mm 7mm 14mm 7mm; }
   .print-card {
     box-shadow: none !important;
     backdrop-filter: none !important;
@@ -266,17 +300,9 @@ body {
     background: #fff !important;
     break-inside: avoid;
   }
-
-  .print-page {
-    page-break-after: always;
-  }
-  .print-page:last-child {
-    page-break-after: auto;
-  }
-
-  /* Crisp black text on white for print, never scaled-down fonts */
-  .print-document,
-  .print-document * {
+  .print-page { page-break-after: always; }
+  .print-page:last-child { page-break-after: auto; }
+  .print-document, .print-document * {
     color: #000 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

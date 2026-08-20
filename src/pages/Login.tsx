@@ -63,9 +63,9 @@ export default function Login() {
       {/* ============================================================
           LEFT — Atmospheric brand / visual section
           ============================================================ */}
-      <section className="relative isolate hidden overflow-hidden bg-ink-900 lg:block lg:w-[52%] lg:min-h-dvh">
+      <section className="relative isolate hidden overflow-hidden bg-[#0A0A0A] lg:block lg:w-[52%] lg:min-h-dvh">
         {/* Base monochromatic gradient: near-black → graphite */}
-        <div className="absolute inset-0 bg-gradient-to-br from-ink-900 via-ink-900 to-ink-700" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0A] via-[#0A0A0A] to-[#262626]" />
 
         {/* Soft radial highlights — subtle silver light, top-right */}
         <div className="pointer-events-none absolute -top-48 -right-32 h-[42rem] w-[42rem] rounded-full bg-white/[0.055] blur-[130px]" />

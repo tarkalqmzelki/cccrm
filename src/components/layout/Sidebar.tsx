@@ -79,7 +79,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
       <AnimatePresence>
         {mobileOpen && (
           <div className="lg:hidden fixed inset-0 z-[140]">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-ink-900/30" onClick={() => setMobileOpen(false)} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 backdrop-normal" onClick={() => setMobileOpen(false)} />
             <motion.aside
               initial={{ x: -300 }}
               animate={{ x: 0 }}

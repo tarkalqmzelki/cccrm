@@ -77,7 +77,7 @@ export function PortraitOnlyOverlay() {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[300] flex flex-col items-center justify-center gap-4 bg-ink-900 px-8 text-center text-white"
+      className="fixed inset-0 z-[300] flex flex-col items-center justify-center gap-4 bg-[#0A0A0A] px-8 text-center text-white"
       role="alert"
       aria-live="assertive"
     >

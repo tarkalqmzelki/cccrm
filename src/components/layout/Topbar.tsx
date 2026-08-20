@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Menu, Search, Bell, Inbox, KeyRound, Briefcase, Check, X, MessageSquare, ShieldCheck, ArrowRight } from 'lucide-react'
 import { NAV } from './nav'
 import { useAuth } from '../../context/AuthContext'
+import { Sun, Moon } from 'lucide-react'
+import { getTheme, toggleTheme, type Theme } from '../../lib/theme'
 import { db } from '../../lib/db'
 import { CommandPalette } from '../CommandPalette'
 import { useAsync } from '../../lib/hooks/useAsync'
@@ -60,11 +62,12 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
           </kbd>
         </button>
 
-        {/* Right cluster: mobile search + notifications bell.
-            Both rendered as solid filled chips so they read as
-            buttons against the sticky header's translucent backdrop. */}
+        {/* Right cluster: theme toggle + mobile search + notifications bell. */}
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2 lg:ml-0">
-          {/* Mobile search — opens the same CommandPalette as desktop */}
+          {/* Theme toggle — sun/moon, applies to all users */}
+          <ThemeToggle />
+
+          {/* Mobile search */}
           <button
             onClick={() => setPaletteOpen(true)}
             className="grid h-10 w-10 place-items-center rounded-xl bg-surface text-ink ring-1 ring-line shadow-sm transition-colors hover:bg-ink-50 hover:ring-ink-200 lg:hidden"
@@ -291,6 +294,23 @@ function InboxRow({ m, onClick }: { m: InboxMessage; onClick: () => void }) {
       </div>
       {!m.read && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-neg" />}
       <span className="text-2xs text-ink-400 shrink-0">{dateShort(m.created_at)}</span>
+    </button>
+  )
+}
+
+/* Theme toggle — sun/moon icon button.  Reads the current theme and
+   toggles on click.  Same styling as the search + bell buttons so
+   they read as a unified action cluster. */
+function ThemeToggle() {
+  const [theme, setThemeState] = useState<Theme>(getTheme())
+  return (
+    <button
+      onClick={() => setThemeState(toggleTheme())}
+      className="grid h-10 w-10 place-items-center rounded-xl bg-surface text-ink ring-1 ring-line shadow-sm transition-colors hover:bg-ink-50 hover:ring-ink-200 lg:h-12 lg:w-12"
+      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label="Toggle theme"
+    >
+      {theme === 'dark' ? <Sun size={18} strokeWidth={1.75} className="lg:!h-[22px] lg:!w-[22px]" /> : <Moon size={18} strokeWidth={1.75} className="lg:!h-[22px] lg:!w-[22px]" />}
     </button>
   )
 }

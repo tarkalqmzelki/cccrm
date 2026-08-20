@@ -92,7 +92,7 @@ export function AdminDocSnippets({ docId }: Props) {
                   </button>
                 </div>
               </div>
-              <pre className="overflow-x-auto rounded-lg bg-ink-900 p-3 text-2xs leading-relaxed text-ink-100">
+              <pre className="overflow-x-auto rounded-lg bg-[#0A0A0A] p-3 text-2xs leading-relaxed text-ink-100">
                 <code>{s.code}</code>
               </pre>
             </div>

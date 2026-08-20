@@ -196,7 +196,7 @@ function PodiumCard({ row, rank, category }: { row: any; rank: number; category:
         </div>
       )}
       {/* Rank badge */}
-      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-full ${isFirst ? 'bg-white text-ink' : 'bg-surface text-ink-400'}`}>
+      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-full ${isFirst ? 'bg-white text-[#0A0A0A]' : 'bg-surface text-ink-400'}`}>
         {icon}
       </div>
       <Avatar name={row.profile.full_name} color={row.profile.avatar_color} url={row.profile.avatar_url} size={isFirst ? 48 : 36} />

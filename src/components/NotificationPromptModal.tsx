@@ -87,7 +87,7 @@ export function NotificationPromptModal() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
+            className="absolute inset-0 backdrop-strong backdrop-blur-sm"
             onClick={dismiss}
           />
           <motion.div
