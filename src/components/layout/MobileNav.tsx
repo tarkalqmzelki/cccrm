@@ -6,6 +6,7 @@ import { X, Check, ArrowLeftRight, Settings2 } from 'lucide-react'
 import { NAV } from './nav'
 import type { NavItem } from './nav'
 import { useAuth } from '../../context/AuthContext'
+import { useLocale } from '../../context/LocaleContext'
 import { useSidebarBadges } from '../../lib/hooks/useSidebarBadges'
 
 /** localStorage key for the user's customised mobile bottom-nav slots.
@@ -43,6 +44,7 @@ function saveSlots(slots: string[]) {
 
 export function MobileNav() {
   const { user } = useAuth()
+  const { t } = useLocale()
   const navigate = useNavigate()
   const badges = useSidebarBadges(user)
   const [slots, setSlots] = useState<string[]>(() => {
@@ -196,7 +198,7 @@ export function MobileNav() {
                     </span>
                   )}
                 </span>
-                <span>{n.label}</span>
+                  <span>{t(n.labelKey)}</span>
               </button>
             )
           })}
@@ -246,6 +248,7 @@ function SlotEditor({
   onPick: (to: string) => void
   onClose: () => void
 }) {
+  const { t } = useLocale()
   const current = slots[index]
   const currentMeta = items.find((n) => n.to === current)
   return createPortal(
@@ -307,7 +310,7 @@ function SlotEditor({
                     }`}
                   >
                     <n.icon size={22} strokeWidth={1.75} />
-                    <span className="text-2xs font-medium">{n.label}</span>
+                    <span className="text-2xs font-medium">{t(n.labelKey)}</span>
                     {selected && <Check size={12} strokeWidth={2.5} className="text-info" />}
                     {inAnotherSlot && (
                       <span className="text-2xs text-warn">in slot {inSlotIdx + 1}</span>

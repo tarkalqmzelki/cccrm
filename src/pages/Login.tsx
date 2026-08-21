@@ -8,11 +8,6 @@ import { Input } from '../components/ui/Input'
 import { Field } from '../components/ui/Input'
 import { useToast } from '../context/ToastContext'
 
-/* Subtle monochromatic grain — kills the "generic AI gradient" feel and adds
- * a print-like, editorial texture over the dark brand panel. */
-const GRAIN =
-  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")"
-
 export default function Login() {
   const { signIn } = useAuth()
   const { push } = useToast()
@@ -61,38 +56,16 @@ export default function Login() {
   return (
     <div className="min-h-dvh bg-canvas lg:flex lg:items-stretch">
       {/* ============================================================
-          LEFT — Atmospheric brand / visual section
+          LEFT — Solid gray brand panel (no gradient, native feel)
           ============================================================ */}
-      <section className="relative isolate hidden overflow-hidden bg-[#0A0A0A] lg:block lg:w-[52%] lg:min-h-dvh">
-        {/* Base monochromatic gradient: near-black → graphite */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0A0A0A] via-[#0A0A0A] to-[#262626]" />
+      <section className="relative isolate hidden overflow-hidden bg-ink-800 lg:block lg:w-[52%] lg:min-h-dvh">
+        {/* Soft radial highlight — subtle, single light source */}
+        <div className="pointer-events-none absolute -top-48 -right-32 h-[42rem] w-[42rem] rounded-full bg-white/[0.04] blur-[120px]" />
 
-        {/* Soft radial highlights — subtle silver light, top-right */}
-        <div className="pointer-events-none absolute -top-48 -right-32 h-[42rem] w-[42rem] rounded-full bg-white/[0.055] blur-[130px]" />
-        <div className="pointer-events-none absolute -bottom-44 -left-24 h-[32rem] w-[32rem] rounded-full bg-white/[0.035] blur-[110px]" />
-
-        {/* Fine concentric arcs — restrained, editorial, futuristic */}
+        {/* Fine concentric arcs */}
         <div className="pointer-events-none absolute -right-44 top-1/2 h-[46rem] w-[46rem] -translate-y-1/2 rounded-full border border-white/[0.06]" />
         <div className="pointer-events-none absolute -right-24 top-1/2 h-[34rem] w-[34rem] -translate-y-1/2 rounded-full border border-white/[0.05]" />
         <div className="pointer-events-none absolute -right-6 top-1/2 h-[22rem] w-[22rem] -translate-y-1/2 rounded-full border border-white/[0.04]" />
-
-        {/* Elegant sweeping curves */}
-        <svg
-          className="pointer-events-none absolute inset-0 h-full w-full text-white/[0.07]"
-          fill="none"
-          preserveAspectRatio="none"
-          viewBox="0 0 800 800"
-          aria-hidden
-        >
-          <path d="M-100 560 C 220 470, 520 690, 920 380" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M-100 640 C 240 560, 540 760, 940 460" stroke="currentColor" strokeWidth="1" />
-        </svg>
-
-        {/* Print-like grain overlay */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.045] mix-blend-overlay"
-          style={{ backgroundImage: GRAIN }}
-        />
 
         {/* Content */}
         <div className="relative z-10 flex min-h-[46vh] flex-col justify-between px-8 pb-24 pt-12 lg:min-h-dvh lg:px-16 lg:py-16 lg:pb-16">
@@ -137,11 +110,12 @@ export default function Login() {
       </section>
 
       {/* ============================================================
-          RIGHT — Clean, spacious login section
+          RIGHT — Clean, spacious login section (adapts to dark mode
+          via CSS variables — no hardcoded white)
           ============================================================ */}
       <section className="relative z-10 flex min-h-dvh flex-1 items-center justify-center bg-canvas px-6 pb-[max(2.5rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))] lg:px-10">
-        {/* Subtle background depth — off-white → soft grey */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white to-ink-50" />
+        {/* Subtle background depth — uses ink-50/100 which flip in dark */}
+        <div className="pointer-events-none absolute inset-0 bg-ink-50/40" />
         <div className="pointer-events-none absolute right-0 top-0 h-80 w-80 rounded-full bg-ink-100/50 blur-3xl" />
 
         <motion.div

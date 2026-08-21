@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Menu, Search, Bell, Inbox, KeyRound, Briefcase, Check, X, MessageSquare, ShieldCheck, ArrowRight } from 'lucide-react'
 import { NAV } from './nav'
 import { useAuth } from '../../context/AuthContext'
+import { useLocale } from '../../context/LocaleContext'
 import { Sun, Moon } from 'lucide-react'
 import { getTheme, toggleTheme, type Theme } from '../../lib/theme'
 import { db } from '../../lib/db'
@@ -15,13 +16,14 @@ import { dateShort } from '../../lib/format'
 export function Topbar({ onMenu }: { onMenu: () => void }) {
   const { pathname } = useLocation()
   const { user } = useAuth()
+  const { t } = useLocale()
   const navigate = useNavigate()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [bellOpen, setBellOpen] = useState(false)
 
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role)))
   const active = items.find((n) => (n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)))
-  const title = active?.label || 'Overview'
+  const title = active ? t(active.labelKey) : 'Overview'
 
   /* Cmd+K / Ctrl+K opens the palette */
   useEffect(() => {

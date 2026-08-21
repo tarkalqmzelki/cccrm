@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { LogOut, UserCog, ChevronDown, Inbox, KeyRound, Activity, FolderCog } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { useLocale } from '../../context/LocaleContext'
 import { NAV } from './nav'
 import { Avatar } from '../ui/Avatar'
 import { Dropdown } from '../ui/Dropdown'
@@ -27,6 +28,7 @@ const MANAGEMENT_PATHS = new Set(['/sellers', '/create-user', '/settings'])
 
 export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; setMobileOpen: (v: boolean) => void }) {
   const { user, signOut } = useAuth()
+  const { t } = useLocale()
   const navigate = useNavigate()
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -62,7 +64,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
               }
             >
               <n.icon size={18} strokeWidth={1.75} />
-              {n.label}
+              {t(n.labelKey)}
               <NavBadge count={badgeFor(n.to)} light={false} />
             </NavLink>
           ))}
@@ -98,7 +100,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
                 className="mt-6 flex-1 space-y-0.5 overflow-y-auto pr-1 -mr-1"
                 onClick={() => setMobileOpen(false)}
               >
-                <MobileNavList items={items} badgeFor={badgeFor} isAdmin={user.role === 'admin'} />
+                <MobileNavList items={items} badgeFor={badgeFor} isAdmin={user.role === 'admin'} t={t} />
               </nav>
               <ChangeLogPill onClick={() => { setMobileOpen(false); setChangelogOpen(true) }} />
               <SystemStatusPill onClick={() => { setMobileOpen(false); setStatusOpen(true) }} />
@@ -161,10 +163,12 @@ function MobileNavList({
   items,
   badgeFor,
   isAdmin,
+  t,
 }: {
   items: NavItem[]
   badgeFor: (to: string) => number
   isAdmin: boolean
+  t: (key: string) => string
 }) {
   const [mgmtOpen, setMgmtOpen] = useState(false)
   if (!isAdmin) {
@@ -182,7 +186,7 @@ function MobileNavList({
             }
           >
             <n.icon size={18} strokeWidth={1.75} />
-            {n.label}
+            {t(n.labelKey)}
             <NavBadge count={badgeFor(n.to)} light={false} />
           </NavLink>
         ))}
@@ -253,7 +257,7 @@ function MobileNavList({
                     }
                   >
                     <n.icon size={16} strokeWidth={1.75} />
-                    {n.label}
+                    {t(n.labelKey)}
                     <NavBadge count={badgeFor(n.to)} light={false} />
                   </NavLink>
                 ))}
