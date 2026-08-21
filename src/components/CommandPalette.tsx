@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Building2, Briefcase, Wallet, FileText, Users, Network,
   CornerDownLeft, Lock, ArrowRight, Phone, Mail, Sparkles, FileText as SummaryIcon,
+  Receipt, FileSignature,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/db'
@@ -11,13 +12,13 @@ import { Avatar } from './ui/Avatar'
 import { eur } from '../lib/format'
 import type {
   Company, Opportunity, Contact, Deal, Payout, Profile,
-  AccessRequest, Lead,
+  AccessRequest, Lead, Invoice, Contract,
 } from '../lib/types'
 
 /* ------------------------------------------------------------------ */
 /* Result type                                                         */
 /* ------------------------------------------------------------------ */
-type SearchResultType = 'lead' | 'offer' | 'contact' | 'deal' | 'payout' | 'member'
+type SearchResultType = 'lead' | 'offer' | 'contact' | 'deal' | 'payout' | 'member' | 'invoice' | 'contract'
 
 interface SearchResult {
   id: string
@@ -50,6 +51,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     profiles: Profile[]
     leads: Lead[]
     requests: AccessRequest[]
+    invoices: Invoice[]
+    contracts: Contract[]
   }>(null)
 
   /* -- Bootstrap: load everything once when first opened -- */
@@ -57,6 +60,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     if (!open || !user || allData) return
     let active = true
     setLoading(true)
+    const isAdmin = user.role === 'admin'
     Promise.all([
       db.listCompanies(),
       db.listOpportunities(),
@@ -65,20 +69,30 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       db.listPayouts(),
       db.listProfiles(),
       db.listAccessRequests(user.id),
+      // Invoices + contracts — admin only (the top search bar is the
+      // admin's global entry point into the finance docs).
+      isAdmin ? db.listInvoices().catch(() => [] as Invoice[]) : Promise.resolve([] as Invoice[]),
+      isAdmin ? db.listContracts().catch(() => [] as Contract[]) : Promise.resolve([] as Contract[]),
     ])
-      .then(([companies, opportunities, leads, deals, payouts, profiles, requests]) => {
+      .then(([companies, opportunities, leads, deals, payouts, profiles, requests, invoices, contracts]) => {
         if (!active) return
         const contactPromises = companies.map((c) => db.listContacts(c.id).catch(() => [] as Contact[]))
         return Promise.all(contactPromises).then((contactGroups) => {
           if (!active) return
           const contacts = contactGroups.flat()
-          setAllData({ companies, opportunities, leads, deals, payouts, profiles, contacts: contacts as Contact[], requests: requests as AccessRequest[] } as never)
+          setAllData({
+            companies, opportunities, leads, deals, payouts, profiles,
+            contacts: contacts as Contact[],
+            requests: requests as AccessRequest[],
+            invoices: invoices as Invoice[],
+            contracts: contracts as Contract[],
+          } as never)
         })
       })
       .catch(() => { /* ignore */ })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [open, user?.id, allData])
+  }, [open, user?.id, allData, user?.role])
 
   /* -- Reset query/state when opening -- */
   useEffect(() => { if (open) { setQuery(''); setActiveIdx(0) } }, [open])
@@ -208,6 +222,36 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       })
     }
 
+    /* Invoices — admin only */
+    if (isAdmin && allData.invoices) {
+      for (const inv of allData.invoices) {
+        if (q && !(inv.number.toLowerCase().includes(q) || inv.billed_to.toLowerCase().includes(q) || (inv.contract_ref || '').toLowerCase().includes(q) || (inv.billed_email || '').toLowerCase().includes(q))) continue
+        out.push({
+          id: `invoice:${inv.id}`,
+          type: 'invoice',
+          title: inv.number,
+          subtitle: `${inv.billed_to}${inv.contract_ref ? ` · ${inv.contract_ref}` : ''} · ${inv.status}`,
+          href: '/finances',
+          icon: Receipt,
+        })
+      }
+    }
+
+    /* Contracts — admin only */
+    if (isAdmin && allData.contracts) {
+      for (const c of allData.contracts) {
+        if (q && !(c.number.toLowerCase().includes(q) || c.counterparty_name.toLowerCase().includes(q) || (c.counterparty_company || '').toLowerCase().includes(q))) continue
+        out.push({
+          id: `contract:${c.id}`,
+          type: 'contract',
+          title: c.number,
+          subtitle: `${c.counterparty_name}${c.counterparty_company ? ` · ${c.counterparty_company}` : ''} · ${c.status}`,
+          href: '/finances',
+          icon: FileSignature,
+        })
+      }
+    }
+
     /* Cap results */
     return out.slice(0, 60)
   }, [allData, user, query])
@@ -242,7 +286,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   /* -- Close on outside click handled by parent modal; ESC handled here -- */
   /* -- Group results for display -- */
   const groups = useMemo(() => {
-    const g: Record<SearchResultType, SearchResult[]> = { lead: [], offer: [], contact: [], deal: [], payout: [], member: [] }
+    const g: Record<SearchResultType, SearchResult[]> = { lead: [], offer: [], contact: [], deal: [], payout: [], member: [], invoice: [], contract: [] }
     results.forEach((r) => g[r.type].push(r))
     return g
   }, [results])
@@ -254,8 +298,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     deal: 'Deals',
     payout: 'Payouts',
     member: 'Members',
+    invoice: 'Invoices',
+    contract: 'Contracts',
   }
-  const GROUP_ORDER: SearchResultType[] = ['lead', 'offer', 'contact', 'deal', 'payout', 'member']
+  const GROUP_ORDER: SearchResultType[] = ['lead', 'offer', 'contact', 'deal', 'payout', 'member', 'invoice', 'contract']
 
   let runningIdx = 0
 

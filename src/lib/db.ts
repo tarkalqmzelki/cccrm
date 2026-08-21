@@ -14,6 +14,7 @@ import type {
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
 import type { LanguageTranslations } from './translations'
+import type { PlatformLocale } from './platformLocales'
 
 const iso = () => new Date().toISOString()
 
@@ -1760,6 +1761,37 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
 
   async deleteLanguageTranslation(id: string): Promise<void> {
     const { error } = await supabase!.from('language_translations').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ================================================================== */
+  /* PLATFORM LOCALES (UI translations)                                   */
+  /* ================================================================== */
+
+  async listPlatformLocales(): Promise<PlatformLocale[]> {
+    const { data, error } = await supabase!.from('platform_locales')
+      .select('*').order('locale', { ascending: true })
+    if (error) return []
+    return (data || []) as PlatformLocale[]
+  },
+
+  async createPlatformLocale(l: { locale: string; label: string; strings: Record<string, string> }): Promise<void> {
+    const { error } = await supabase!.from('platform_locales').insert({
+      locale: l.locale,
+      label: l.label,
+      strings: l.strings,
+    })
+    if (error) throw error
+  },
+
+  async updatePlatformLocale(id: string, patch: Partial<{ locale: string; label: string; strings: Record<string, string> }>): Promise<void> {
+    const { error } = await supabase!.from('platform_locales')
+      .update({ ...patch, updated_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
+  async deletePlatformLocale(id: string): Promise<void> {
+    const { error } = await supabase!.from('platform_locales').delete().eq('id', id)
     if (error) throw error
   },
 }

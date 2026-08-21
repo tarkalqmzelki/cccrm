@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Printer, Trash2, Eye, FileText, FilePlus2 } from 'lucide-react'
+import { Plus, Pencil, Printer, Trash2, Eye, FileText, FilePlus2, Search as SearchIcon, X as XIcon } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
@@ -8,7 +8,7 @@ import { Button } from './ui/Button'
 import { Modal } from './ui/Modal'
 import { Skeleton } from './ui/Skeleton'
 import { Badge } from './ui/Badge'
-import { Select } from './ui/Input'
+import { Select, Input } from './ui/Input'
 import { useToast } from '../context/ToastContext'
 import { ContractEditor } from './ContractEditor'
 import { FormalContractDocument } from './FormalContractDocument'
@@ -55,6 +55,23 @@ export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }
   const templates = data?.templates || []
   const settings = data?.settings || DEFAULT_INVOICE_SETTINGS
   const languages = data?.languages || []
+
+  // Search — filters by contract number, counterparty, template name
+  const [query, setQuery] = useState('')
+  const filteredContracts = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return contracts
+    return contracts.filter((c) => {
+      const tpl = templates.find((t) => t.id === c.template_id)
+      return (
+        c.number.toLowerCase().includes(q) ||
+        c.counterparty_name.toLowerCase().includes(q) ||
+        (c.counterparty_company || '').toLowerCase().includes(q) ||
+        (c.counterparty_email || '').toLowerCase().includes(q) ||
+        (tpl?.name || '').toLowerCase().includes(q)
+      )
+    })
+  }, [contracts, templates, query])
 
   const stats = useMemo(() => {
     const total = contracts.length
@@ -155,19 +172,36 @@ export function ContractsTab({ refreshKey, onContractsChanged, onCreateInvoice }
 
       {/* List */}
       <Card>
-        <CardHeader title="All contracts" desc={`${contracts.length} contract${contracts.length === 1 ? '' : 's'}`} />
+        <CardHeader title="All contracts" desc={`${filteredContracts.length} contract${filteredContracts.length === 1 ? '' : 's'}${query ? ' matching' : ''}`} />
+        {/* Search — contract number, counterparty, template */}
+        <div className="mb-3 relative w-full sm:max-w-xs">
+          <SearchIcon size={16} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search number, client, template…"
+            className="pl-9 pr-9 h-10"
+          />
+          {query && (
+            <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink">
+              <XIcon size={15} strokeWidth={1.75} />
+            </button>
+          )}
+        </div>
         {loading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
           </div>
-        ) : contracts.length === 0 ? (
+        ) : filteredContracts.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <FileText size={22} strokeWidth={1.75} className="text-ink-300" />
-            <p className="text-sm text-ink-400">No contracts yet — click <strong>New contract</strong> to generate your first one.</p>
+            <p className="text-sm text-ink-400">
+              {query ? `No contracts match "${query}"` : <>No contracts yet — click <strong>New contract</strong> to generate your first one.</>}
+            </p>
           </div>
         ) : (
           <div className="space-y-1.5">
-            {contracts.map((c) => {
+            {filteredContracts.map((c) => {
               const meta = CONTRACT_STATUS_META[c.status as ContractStatus] ?? CONTRACT_STATUS_META.draft
               const tpl = templates.find((t) => t.id === c.template_id)
               return (

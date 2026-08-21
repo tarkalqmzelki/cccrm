@@ -3,15 +3,18 @@ import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input, Field, Textarea } from './ui/Input'
 import { Avatar } from './ui/Avatar'
-import { Bell } from 'lucide-react'
+import { Bell, Globe } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { useLocale } from '../context/LocaleContext'
 import { db } from '../lib/db'
 import { NotificationPreferences } from './NotificationPreferences'
 
 export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, refresh } = useAuth()
   const { push } = useToast()
+  const { locale, locales, setLocale, t } = useLocale()
   const [full_name, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -84,11 +87,59 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
         <div className="border-t border-line pt-5">
           <div className="mb-3 flex items-center gap-2">
             <Bell size={15} strokeWidth={1.75} className="text-ink-600" />
-            <h3 className="text-sm font-semibold">Notifications</h3>
+            <h3 className="text-sm font-semibold">{t('profile.notifications')}</h3>
           </div>
           <NotificationPreferences />
         </div>
+
+        {/* Language switcher — animated pills with the dimming overlay */}
+        <div className="border-t border-line pt-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Globe size={15} strokeWidth={1.75} className="text-ink-600" />
+            <h3 className="text-sm font-semibold">{t('profile.language')}</h3>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <LangPill
+              label="EN"
+              title="English"
+              active={locale === 'en'}
+              onClick={() => setLocale('en')}
+            />
+            {locales.map((l) => (
+              <LangPill
+                key={l.id}
+                label={l.locale.toUpperCase()}
+                title={l.label || l.locale}
+                active={locale === l.locale}
+                onClick={() => setLocale(l.locale)}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-2xs text-ink-400">Applies only to your account — other users keep their own language.</p>
+        </div>
       </div>
     </Modal>
+  )
+}
+
+/* Language pill — same animated pattern as the invoice/contract
+   language pills. */
+function LangPill({ label, title, active, onClick }: { label: string; title: string; active: boolean; onClick: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      title={title}
+      whileTap={{ scale: 0.94 }}
+      animate={active ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+      transition={active ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] } : { duration: 0.15 }}
+      className={`relative rounded-full px-3.5 py-1.5 text-2xs font-semibold tracking-wide transition-colors ${
+        active
+          ? 'text-info ring-2 ring-info/50 bg-infoBg'
+          : 'text-ink-500 border border-line bg-surface hover:bg-ink-50 hover:text-ink'
+      }`}
+    >
+      {label}
+    </motion.button>
   )
 }

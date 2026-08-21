@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Printer, Trash2, Eye, FileText, Check } from 'lucide-react'
+import { Plus, Pencil, Printer, Trash2, Eye, FileText, Check, Search, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
@@ -8,6 +8,7 @@ import { Button } from './ui/Button'
 import { Modal } from './ui/Modal'
 import { Skeleton } from './ui/Skeleton'
 import { Badge } from './ui/Badge'
+import { Input } from './ui/Input'
 import { useToast } from '../context/ToastContext'
 import { InvoiceEditor } from './InvoiceEditor'
 import { FormalInvoiceDocument } from './FormalInvoiceDocument'
@@ -72,6 +73,19 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged, pendingContractRef,
 
   const invoices = data?.invoices || []
   const languages = data?.languages || []
+
+  // Search — filters by invoice number, contract ref, billed-to, email
+  const [query, setQuery] = useState('')
+  const filteredInvoices = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return invoices
+    return invoices.filter((inv) =>
+      inv.number.toLowerCase().includes(q) ||
+      (inv.contract_ref || '').toLowerCase().includes(q) ||
+      inv.billed_to.toLowerCase().includes(q) ||
+      (inv.billed_email || '').toLowerCase().includes(q)
+    )
+  }, [invoices, query])
 
   // Stats
   const stats = useMemo(() => {
@@ -227,19 +241,36 @@ export function InvoicesTab({ refreshKey, onInvoicesChanged, pendingContractRef,
 
       {/* List */}
       <Card>
-        <CardHeader title="All invoices" desc={`${invoices.length} invoice${invoices.length === 1 ? '' : 's'}`} />
+        <CardHeader title="All invoices" desc={`${filteredInvoices.length} invoice${filteredInvoices.length === 1 ? '' : 's'}${query ? ' matching' : ''}`} />
+        {/* Search — invoice number, contract ref, billed-to */}
+        <div className="mb-3 relative w-full sm:max-w-xs">
+          <Search size={16} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search number, contract, client…"
+            className="pl-9 pr-9 h-10"
+          />
+          {query && (
+            <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink">
+              <X size={15} strokeWidth={1.75} />
+            </button>
+          )}
+        </div>
         {loading ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
           </div>
-        ) : invoices.length === 0 ? (
+        ) : filteredInvoices.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <FileText size={22} strokeWidth={1.75} className="text-ink-300" />
-            <p className="text-sm text-ink-400">No invoices yet — click <strong>New invoice</strong> to generate your first one.</p>
+            <p className="text-sm text-ink-400">
+              {query ? `No invoices match "${query}"` : <>No invoices yet — click <strong>New invoice</strong> to generate your first one.</>}
+            </p>
           </div>
         ) : (
           <div className="space-y-1.5">
-            {invoices.map((inv) => {
+            {filteredInvoices.map((inv) => {
               const svcs = data?.servicesByInvoice[inv.id] || []
               const sub = svcs.reduce((s, x) => s + Number(x.quantity) * Number(x.unit_price), 0)
               const vat = inv.vat_included ? 0 : sub * (Number(inv.vat_pct) / 100)
