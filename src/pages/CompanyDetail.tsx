@@ -141,6 +141,12 @@ export default function CompanyDetail() {
               {company.website && <span className="flex items-center gap-1"><Globe size={13} strokeWidth={1.75} /> {company.website}</span>}
               {company.industry && <span className="flex items-center gap-1"><Briefcase size={13} strokeWidth={1.75} /> {company.industry}</span>}
               {company.address && <span className="flex items-center gap-1"><MapPin size={13} strokeWidth={1.75} /> {company.address}</span>}
+              {/* Marketplace phone — visible to the lead's owner and admins only */}
+              {(company as { phone?: string }).phone && canEditCompany && (
+                <a href={`tel:${(company as { phone?: string }).phone!.replace(/\s+/g, '')}`} className="flex items-center gap-1 font-medium text-pos">
+                  📞 {(company as { phone?: string }).phone}
+                </a>
+              )}
             </div>
           </div>
         </div>

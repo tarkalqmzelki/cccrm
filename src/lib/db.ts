@@ -11,6 +11,8 @@ import type {
   Invoice, InvoiceService, InvoiceStatus, InvoiceSettings,
   Contract, ContractTemplate, ContractStatus, CustomPlaceholderDef,
   ContractTemplateVariant, DesignSettings,
+  Challenge, ChallengeProgress, ChallengeType, FunctionalChallengeType,
+  MarketLead,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
 import type { LanguageTranslations } from './translations'
@@ -22,6 +24,97 @@ const iso = () => new Date().toISOString()
 /* Public API  — Supabase only (no demo/mock fallback)                */
 /* ------------------------------------------------------------------ */
 export const db = {
+  /* ---------- CHALLENGES (schema59) ---------- */
+  async listChallenges(): Promise<Challenge[]> {
+    const { data, error } = await supabase!
+      .from('challenges').select('*')
+      .order('created_at', { ascending: false })
+    if (error) return []
+    return (data || []) as Challenge[]
+  },
+
+  async createChallenge(c: {
+    title: string
+    description?: string
+    type: ChallengeType
+    functional_type?: FunctionalChallengeType
+    target_count?: number
+    points?: number
+    financial_bonus?: number
+    scope?: 'solo' | 'team'
+    created_by?: string | null
+  }): Promise<void> {
+    const { error } = await supabase!.from('challenges').insert({
+      title: c.title,
+      description: c.description || '',
+      type: c.type,
+      functional_type: c.functional_type || 'lead_created',
+      target_count: c.target_count ?? 1,
+      points: c.points ?? 0,
+      financial_bonus: c.financial_bonus ?? 0,
+      status: 'active',
+      scope: c.scope || 'solo',
+      created_by: c.created_by ?? null,
+    })
+    if (error) throw error
+  },
+
+  async updateChallenge(id: string, patch: Partial<Challenge>): Promise<void> {
+    const allowed = ['title', 'description', 'type', 'functional_type', 'target_count', 'points', 'financial_bonus', 'status', 'scope']
+    const payload: Record<string, unknown> = { updated_at: iso() }
+    for (const k of allowed) if (k in patch) payload[k] = (patch as Record<string, unknown>)[k]
+    const { error } = await supabase!.from('challenges').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteChallenge(id: string): Promise<void> {
+    const { error } = await supabase!.from('challenges').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  async listChallengeProgress(userId?: string): Promise<ChallengeProgress[]> {
+    let q = supabase!.from('challenge_progress').select('*')
+    if (userId) q = q.eq('user_id', userId)
+    const { data, error } = await q
+    if (error) return []
+    return (data || []) as ChallengeProgress[]
+  },
+
+  /** Self-reported progress bump for regular challenges. Creates the row
+   *  on first increment and stamps completed_at at the target. */
+  async bumpChallengeProgress(challengeId: string, userId: string, target: number): Promise<ChallengeProgress> {
+    const existing = await db.listChallengeProgress(userId)
+    const row = existing.find((r) => r.challenge_id === challengeId)
+    const nextProgress = Math.min((row?.progress ?? 0) + 1, target)
+    if (row) {
+      const completedAt = nextProgress >= target ? (row.completed_at ?? iso()) : row.completed_at
+      const { data, error } = await supabase!.from('challenge_progress')
+        .update({ progress: nextProgress, completed_at: completedAt, updated_at: iso() })
+        .eq('id', row.id).select().single()
+      if (error) throw error
+      return data as ChallengeProgress
+    }
+    const { data, error } = await supabase!.from('challenge_progress')
+      .insert({
+        challenge_id: challengeId,
+        user_id: userId,
+        progress: nextProgress,
+        completed_at: nextProgress >= target ? iso() : null,
+      }).select().single()
+    if (error) throw error
+    return data as ChallengeProgress
+  },
+
+  /** Admin/service marks the completion bonus as credited to payouts. */
+  async markChallengeBonusPaid(challengeId: string, userId: string): Promise<void> {
+    const existing = await db.listChallengeProgress(userId)
+    const row = existing.find((r) => r.challenge_id === challengeId)
+    if (!row) return
+    const { error } = await supabase!.from('challenge_progress')
+      .update({ bonus_paid: true, updated_at: iso() }).eq('id', row.id)
+    if (error) throw error
+  },
+
   /* ---------- PROFILES ---------- */
   async listProfiles(): Promise<Profile[]> {
     const { data, error } = await supabase!
@@ -217,6 +310,22 @@ export const db = {
     return data as Payout
   },
 
+  /* Challenge completion bonus → pending 'bonus' payout (schema59) */
+  async createChallengeBonusPayout(sellerId: string, amount: number): Promise<void> {
+    const now = new Date()
+    const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const { error } = await supabase!.from('payouts').insert({
+      seller_id: sellerId,
+      deal_id: null,
+      amount,
+      paid_amount: 0,
+      status: 'pending',
+      period,
+      payout_type: 'bonus',
+    })
+    if (error) throw error
+  },
+
   /* Mark a payout as fully paid to the seller */
   async markPayoutPaid(id: string): Promise<Payout> {
     const { data, error } = await supabase!
@@ -307,6 +416,7 @@ export const db = {
       address: c.address || '',
       logo_url: c.logo_url || '',
       summary: c.summary || '',
+      phone: c.phone || '',
       created_by: c.created_by || null,
     }
     const { data, error } = await supabase!.from('companies').insert(row).select().single()
@@ -978,6 +1088,126 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
 
   async deleteFinanceEntry(id: string): Promise<void> {
     const { error } = await supabase!.from('finance_entries').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* Challenge announcement → inbox row per member with the push routed
+   * through the 'user_challenge_new' notification template (schema29's
+   * notification_key column drives the Edge Function routing). */
+  async announceChallenge(recipientIds: string[], senderId: string, title: string, body: string): Promise<void> {
+    if (!recipientIds.length) return
+    const rows = recipientIds.map((rid) => ({
+      id: uuid(),
+      recipient_id: rid,
+      sender_id: senderId,
+      type: 'system',
+      title,
+      body,
+      read: false,
+      action_url: '/challenges',
+      metadata: { kind: 'challenge_announcement' },
+      priority: 'normal',
+      category: 'challenges',
+      is_starred: false,
+      folder: 'inbox',
+      thread_id: null,
+      parent_id: null,
+      notification_key: 'user_challenge_new',
+    }))
+    const { error } = await supabase!.from('inbox_messages').insert(rows)
+    if (error) throw error
+  },
+
+  /* Completion recap → the completer's inbox + optional push. */
+  async sendChallengeCompletedNotice(userId: string, title: string, body: string): Promise<void> {
+    const { error } = await supabase!.from('inbox_messages').insert({
+      id: uuid(),
+      recipient_id: userId,
+      sender_id: null,
+      type: 'system',
+      title,
+      body,
+      read: false,
+      action_url: '/challenges',
+      metadata: { kind: 'challenge_completed' },
+      priority: 'normal',
+      category: 'challenges',
+      is_starred: false,
+      folder: 'inbox',
+      thread_id: null,
+      parent_id: null,
+      notification_key: 'user_challenge_completed',
+    })
+    if (error) throw error
+  },
+
+  /* ---------- LEADS MARKETPLACE (schema61) ---------- */
+  async listMarketLeads(): Promise<MarketLead[]> {
+    const { data, error } = await supabase!
+      .from('marketplace_leads').select('*')
+      .order('created_at', { ascending: false })
+    if (error) return []
+    return (data || []) as MarketLead[]
+  },
+
+  async createMarketLead(m: Partial<MarketLead> & { name: string }, importedBy?: string | null): Promise<void> {
+    const { error } = await supabase!.from('marketplace_leads').insert({
+      name: m.name,
+      website: m.website || '',
+      domain: m.domain || (m.website || '').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0],
+      vat_number: m.vat_number || '',
+      industry: m.industry || '',
+      description: m.description || '',
+      address: m.address || '',
+      logo_url: m.logo_url || '',
+      summary: m.summary || '',
+      phone: m.phone || '',
+      published: m.published ?? false,
+      unlock_at: m.unlock_at ?? null,
+      allocated_to: m.allocated_to ?? null,
+      imported_by: importedBy ?? null,
+    })
+    if (error) throw error
+  },
+
+  async updateMarketLead(id: string, patch: Partial<MarketLead>): Promise<void> {
+    const allowed = ['name', 'website', 'domain', 'vat_number', 'industry', 'description', 'address', 'logo_url', 'summary', 'phone', 'published', 'unlock_at', 'allocated_to']
+    const payload: Record<string, unknown> = { updated_at: iso() }
+    for (const k of allowed) if (k in patch) payload[k] = (patch as Record<string, unknown>)[k]
+    const { error } = await supabase!.from('marketplace_leads').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async bulkUpdateMarketLeads(ids: string[], patch: Partial<MarketLead>): Promise<void> {
+    if (!ids.length) return
+    const allowed = ['published', 'unlock_at', 'allocated_to']
+    const payload: Record<string, unknown> = { updated_at: iso() }
+    for (const k of allowed) if (k in patch) payload[k] = (patch as Record<string, unknown>)[k]
+    const { error } = await supabase!.from('marketplace_leads').update(payload).in('id', ids)
+    if (error) throw error
+  },
+
+  async deleteMarketLead(id: string): Promise<void> {
+    const { error } = await supabase!.from('marketplace_leads').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  async bulkDeleteMarketLeads(ids: string[]): Promise<void> {
+    if (!ids.length) return
+    const { error } = await supabase!.from('marketplace_leads').delete().in('id', ids)
+    if (error) throw error
+  },
+
+  /** Member claim — flips ownership on the pool row; the caller then
+   *  creates the real company with created_by = claimer. */
+  async claimMarketLead(id: string, userId: string): Promise<void> {
+    const { data: claimedAtRows, error: readErr } = await supabase!
+      .from('marketplace_leads').select('claimed_by').eq('id', id).single()
+    if (readErr) throw readErr
+    if ((claimedAtRows as { claimed_by: string | null }).claimed_by) throw new Error('Already claimed')
+    const { error } = await supabase!.from('marketplace_leads')
+      .update({ claimed_by: userId, claimed_at: iso(), updated_at: iso() })
+      .eq('id', id)
     if (error) throw error
   },
 

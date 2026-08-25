@@ -20,6 +20,7 @@ import { useAuth } from '../context/AuthContext'
 import { FormalBalanceSheetDocument } from '../components/FormalBalanceSheetDocument'
 import { InvoicesTab } from '../components/InvoicesTab'
 import { ContractsTab } from '../components/ContractsTab'
+import { useCountUp } from '../components/leaderboard/useCountUp'
 import {
   FINANCE_CATEGORY_META,
   FINANCE_REVENUE_CATEGORIES,
@@ -254,8 +255,22 @@ export default function Finances() {
         </div>
       </Card>
 
-      {/* Stats */}
-      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Stats — tabs on mobile (no more squished tiles), grid on desktop */}
+      {/* Mobile: liquid-glass tab strip + one large gradient stat card */}
+      <div className="mb-5 sm:hidden">
+        <MobileStatTabs
+          tabs={[
+            { key: 'revenue', label: 'Revenue', value: totalRevenue, color: '#22c55e', icon: <TrendingUp size={17} strokeWidth={2} /> },
+            { key: 'costs', label: 'Costs', value: totalCosts, color: '#ef4444', icon: <TrendingDown size={17} strokeWidth={2} /> },
+            { key: 'profit', label: 'Profit', value: profit, color: profit >= 0 ? '#3b82f6' : '#ef4444', icon: <Scale size={17} strokeWidth={2} /> },
+            { key: 'unbooked', label: 'Unbooked', value: closedDealsWithCommission.reduce((s, d) => s + (d.collected_amount || 0), 0), color: '#f59e0b', icon: <Briefcase size={17} strokeWidth={2} />, hint: `${closedDealsWithCommission.length} deal${closedDealsWithCommission.length === 1 ? '' : 's'} ready to add` },
+          ]}
+          loading={loading}
+        />
+      </div>
+
+      {/* Desktop / tablet grid */}
+      <div className="mb-5 hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Revenue"
           value={eur(totalRevenue)}
@@ -353,20 +368,22 @@ export default function Finances() {
                 <RevIcon category={e.category} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{e.title || FINANCE_CATEGORY_META[e.category].label}</p>
-                  {e.description && <p className="truncate text-2xs text-ink-400">{e.description}</p>}
-                </div>
-                    <Badge tone="neutral" className="capitalize">{FINANCE_CATEGORY_META[e.category].label}</Badge>
-                    <span className="text-2xs text-ink-400 w-20 text-right">{dateShort(e.entry_date)}</span>
-                    <span className="num w-24 text-right text-sm font-semibold text-pos">+{eurFull(e.amount)}</span>
-                    <button
-                      onClick={() => setEditTarget(e)}
-                      title="Edit"
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-ink-100 hover:text-ink-600"
-                    >
-                      <Pencil size={13} strokeWidth={1.75} />
-                    </button>
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <Badge tone="pos" className="max-w-[110px] shrink-0"><span className="truncate">{FINANCE_CATEGORY_META[e.category].label}</span></Badge>
+                    <span className="shrink-0 text-2xs text-ink-400 num">{dateShort(e.entry_date)}</span>
+                    {e.description && <span className="hidden truncate text-2xs text-ink-400 sm:inline">· {e.description}</span>}
                   </div>
-                ))}
+                </div>
+                <span className="num shrink-0 whitespace-nowrap text-right text-sm font-semibold text-pos">+{eurFull(e.amount)}</span>
+                <button
+                  onClick={() => setEditTarget(e)}
+                  title="Edit"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-ink-100 hover:text-ink-600"
+                >
+                  <Pencil size={13} strokeWidth={1.75} />
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </Card>
@@ -393,20 +410,22 @@ export default function Finances() {
                 <CostIcon category={e.category} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{e.title || FINANCE_CATEGORY_META[e.category].label}</p>
-                  {e.description && <p className="truncate text-2xs text-ink-400">{e.description}</p>}
-                </div>
-                    <Badge tone="neutral" className="capitalize">{FINANCE_CATEGORY_META[e.category].label}</Badge>
-                    <span className="text-2xs text-ink-400 w-20 text-right">{dateShort(e.entry_date)}</span>
-                    <span className="num w-24 text-right text-sm font-semibold text-neg">−{eurFull(e.amount)}</span>
-                    <button
-                      onClick={() => setEditTarget(e)}
-                      title="Edit"
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-ink-100 hover:text-ink-600"
-                    >
-                      <Pencil size={13} strokeWidth={1.75} />
-                    </button>
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <Badge tone="neg" className="max-w-[110px] shrink-0"><span className="truncate">{FINANCE_CATEGORY_META[e.category].label}</span></Badge>
+                    <span className="shrink-0 text-2xs text-ink-400 num">{dateShort(e.entry_date)}</span>
+                    {e.description && <span className="hidden truncate text-2xs text-ink-400 sm:inline">· {e.description}</span>}
                   </div>
-                ))}
+                </div>
+                <span className="num shrink-0 whitespace-nowrap text-right text-sm font-semibold text-neg">−{eurFull(e.amount)}</span>
+                <button
+                  onClick={() => setEditTarget(e)}
+                  title="Edit"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-ink-100 hover:text-ink-600"
+                >
+                  <Pencil size={13} strokeWidth={1.75} />
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </Card>
@@ -493,6 +512,87 @@ export default function Finances() {
 
 /* ------------------------------------------------------------------ */
 /* Stat tile                                                          */
+/* ------------------------------------------------------------------ */
+/* Mobile stat tabs — liquid-glass strip + one gradient metric card    */
+/* ------------------------------------------------------------------ */
+function MobileStatTabs({
+  tabs,
+  loading,
+}: {
+  tabs: { key: string; label: string; value: number; color: string; icon: React.ReactNode; hint?: string }[]
+  loading?: boolean
+}) {
+  const [active, setActive] = useState(tabs[0]?.key ?? 'revenue')
+  const tab = tabs.find((t) => t.key === active) ?? tabs[0]
+  const animated = useCountUp(tab?.value ?? 0, 0.9)
+
+  return (
+    <div>
+      {/* Tab strip — soft multi-color gradient wash behind glass pills */}
+      <div
+        className="glass-tabs flex gap-1 rounded-full p-1"
+        style={{
+          background:
+            'linear-gradient(135deg, rgba(34,197,94,0.20) 0%, rgba(59,130,246,0.14) 35%, rgba(245,158,11,0.14) 68%, rgba(239,68,68,0.18) 100%)',
+        }}
+      >
+        {tabs.map((t) => {
+          const isActive = t.key === active
+          return (
+            <button
+              key={t.key}
+              onClick={() => setActive(t.key)}
+              className={`relative flex flex-1 items-center justify-center gap-1 rounded-full px-1 py-2 text-[10px] font-bold transition-colors ${
+                isActive ? 'text-white' : 'text-ink-500 dark:text-white/55'
+              }`}
+            >
+              {isActive && (
+                <motion.span
+                  layoutId="fin-stat-tab"
+                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  className="absolute inset-0 rounded-full"
+                  style={{
+                    background: `linear-gradient(160deg, ${t.color}f2, ${t.color}b8)`,
+                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -2px 4px rgba(0,0,0,0.15), 0 4px 12px -3px ${t.color}80`,
+                  }}
+                />
+              )}
+              <span className="relative">{t.icon}</span>
+              <span className="relative truncate">{t.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Active metric card — static gradient background */}
+      {tab && (
+        <motion.div key={tab.key} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="mt-3">
+          <div
+            className="rounded-2xl border bg-surface px-4 py-4 dark:bg-[rgb(23,23,23)]"
+            style={{
+              backgroundImage: `linear-gradient(150deg, ${tab.color}2E 0%, transparent 55%), linear-gradient(320deg, ${tab.color}14 0%, transparent 45%)`,
+              borderColor: `${tab.color}50`,
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">{tab.label}</p>
+              <span style={{ color: tab.color }}>{tab.icon}</span>
+            </div>
+            {loading ? (
+              <Skeleton className="mt-3 h-9 w-36" />
+            ) : (
+              <p className="num mt-2.5 text-[32px] font-extrabold leading-none tracking-tight" style={{ color: tab.color }}>
+                {eur(animated)}
+              </p>
+            )}
+            {tab.hint && !loading && <p className="mt-2 text-2xs text-ink-400">{tab.hint}</p>}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 function StatTile({
   label, value, tone, icon, loading, hint,

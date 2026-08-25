@@ -1,12 +1,12 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { LogOut, UserCog, ChevronDown, Inbox, KeyRound, Activity, FolderCog } from 'lucide-react'
+import { Fragment, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { useLocale } from '../../context/LocaleContext'
 import { NAV } from './nav'
 import { Avatar } from '../ui/Avatar'
 import { Dropdown } from '../ui/Dropdown'
-import { useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { ProfileModal } from '../ProfileModal'
@@ -34,10 +34,22 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
   const [profileOpen, setProfileOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const [changelogOpen, setChangelogOpen] = useState(false)
+  /* Parent rows with children (e.g. Leads ▸ Map for admins) collapse
+     behind a chevron — expanded on demand, never auto-opened. */
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
+  const toggleParent = (to: string) =>
+    setExpandedParents((s) => {
+      const n = new Set(s)
+      if (n.has(to)) n.delete(to)
+      else n.add(to)
+      return n
+    })
   const badges = useSidebarBadges(user)
   if (!user) return null
 
   const items = NAV.filter((n) => !n.roles || n.roles.includes(user.role))
+  const topLevel = items.filter((n) => !n.parent)
+  const childrenOf = (to: string) => items.filter((n) => n.parent === to)
   const badgeFor = (to: string): number => {
     if (to === '/inbox') return badges.inbox
     if (to === '/deals') return badges.deals
@@ -52,22 +64,70 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col border-r border-line bg-surface px-3 py-5 z-30">
         <Brand />
         <nav className="mt-6 flex-1 space-y-0.5 overflow-y-auto pr-1 -mr-1">
-          {items.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.to === '/'}
-              className={({ isActive }) =>
-                `relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
-                }`
-              }
-            >
-              <n.icon size={18} strokeWidth={1.75} />
-              {t(n.labelKey)}
-              <NavBadge count={badgeFor(n.to)} light={false} />
-            </NavLink>
-          ))}
+          {topLevel.map((n) => {
+            const children = childrenOf(n.to)
+            const hasChildren = children.length > 0
+            const open = expandedParents.has(n.to)
+            return (
+              <Fragment key={n.to}>
+                <div className="relative flex items-center">
+                  <NavLink
+                    to={n.to}
+                    end={n.to === '/'}
+                    className={({ isActive }) =>
+                      `relative flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2.5 pl-3 pr-2 text-sm font-medium transition-colors ${
+                        isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
+                      }`
+                    }
+                  >
+                    <n.icon size={18} strokeWidth={1.75} />
+                    <span className="truncate">{t(n.labelKey)}</span>
+                    <NavBadge count={badgeFor(n.to)} light={false} />
+                  </NavLink>
+                  {hasChildren && (
+                    <motion.button
+                      onClick={(e) => { e.stopPropagation(); toggleParent(n.to) }}
+                      title={open ? `Hide ${n.label} submenu` : `Show ${n.label} submenu`}
+                      animate={{ rotate: open ? 0 : -90 }}
+                      transition={{ duration: 0.18 }}
+                      className={`ml-0.5 mr-1 shrink-0 rounded-lg p-1.5 transition-colors ${
+                        expandedParents.has(n.to) ? 'text-ink hover:bg-ink-50 dark:hover:bg-[rgb(28,28,28)]' : 'text-ink-400 hover:bg-ink-50 hover:text-ink dark:hover:bg-[rgb(28,28,28)]'
+                      }`}
+                    >
+                      <ChevronDown size={14} strokeWidth={1.75} />
+                    </motion.button>
+                  )}
+                </div>
+                {/* Nested children (e.g. admin's Map under Leads) — behind the chevron */}
+                <AnimatePresence initial={false}>
+                  {hasChildren && open && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                      className="overflow-hidden"
+                    >
+                      {children.map((c) => (
+                        <NavLink
+                          key={c.to}
+                          to={c.to}
+                          className={({ isActive }) =>
+                            `relative ml-10 flex items-center gap-2 rounded-lg border-l border-line py-1.5 pl-3 pr-3 text-2xs font-medium transition-colors ${
+                              isActive ? 'text-ink bg-ink-50' : 'text-ink-400 hover:text-ink hover:bg-ink-50'
+                            }`
+                          }
+                        >
+                          <c.icon size={13} strokeWidth={1.75} />
+                          {t(c.labelKey)}
+                        </NavLink>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Fragment>
+            )
+          })}
         </nav>
         <ChangeLogPill onClick={() => setChangelogOpen(true)} />
         <SystemStatusPill onClick={() => setStatusOpen(true)} />
@@ -100,8 +160,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: { mobileOpen: boolean; se
                 className="mt-6 flex-1 space-y-0.5 overflow-y-auto pr-1 -mr-1"
                 onClick={() => setMobileOpen(false)}
               >
-                <MobileNavList items={items} badgeFor={badgeFor} isAdmin={user.role === 'admin'} t={t} />
-              </nav>
+                <MobileNavList items={items} badgeFor={badgeFor} isAdmin={user.role === 'admin'} t={t} />              </nav>
               <ChangeLogPill onClick={() => { setMobileOpen(false); setChangelogOpen(true) }} />
               <SystemStatusPill onClick={() => { setMobileOpen(false); setStatusOpen(true) }} />
               <UserCard
@@ -171,30 +230,83 @@ function MobileNavList({
   t: (key: string) => string
 }) {
   const [mgmtOpen, setMgmtOpen] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggleParent = (to: string) =>
+    setExpanded((s) => {
+      const n = new Set(s)
+      if (n.has(to)) n.delete(to)
+      else n.add(to)
+      return n
+    })
+  const topLevel = items.filter((n) => !n.parent)
+  const childrenOf = (to: string) => items.filter((n) => n.parent === to)
   if (!isAdmin) {
     return (
       <>
-        {items.map((n) => (
-          <NavLink
-            key={n.to}
-            to={n.to}
-            end={n.to === '/'}
-            className={({ isActive }) =>
-              `relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
-              }`
-            }
-          >
-            <n.icon size={18} strokeWidth={1.75} />
-            {t(n.labelKey)}
-            <NavBadge count={badgeFor(n.to)} light={false} />
-          </NavLink>
-        ))}
+        {topLevel.map((n) => {
+          const children = childrenOf(n.to)
+          const open = expanded.has(n.to)
+          return (
+            <Fragment key={n.to}>
+              <div className="relative flex items-center" onClick={(e) => e.stopPropagation()}>
+                <NavLink
+                  to={n.to}
+                  end={n.to === '/'}
+                  className={({ isActive }) =>
+                    `relative flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2.5 pl-3 pr-2 text-sm font-medium transition-colors ${
+                      isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
+                    }`
+                  }
+                >
+                  <n.icon size={18} strokeWidth={1.75} />
+                  <span className="truncate">{t(n.labelKey)}</span>
+                  <NavBadge count={badgeFor(n.to)} light={false} />
+                </NavLink>
+                {children.length > 0 && (
+                  <motion.button
+                    onClick={() => toggleParent(n.to)}
+                    animate={{ rotate: open ? 0 : -90 }}
+                    transition={{ duration: 0.18 }}
+                    className="mr-1 shrink-0 rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-ink-50 hover:text-ink dark:hover:bg-[rgb(28,28,28)]"
+                  >
+                    <ChevronDown size={14} strokeWidth={1.75} />
+                  </motion.button>
+                )}
+              </div>
+              <AnimatePresence initial={false}>
+                {children.length > 0 && open && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                    className="overflow-hidden"
+                  >
+                    {children.map((c) => (
+                      <NavLink
+                        key={c.to}
+                        to={c.to}
+                        className={({ isActive }) =>
+                          `relative ml-10 flex items-center gap-2 rounded-lg border-l border-line py-1.5 pl-3 pr-3 text-2xs font-medium transition-colors ${
+                            isActive ? 'text-ink bg-ink-50' : 'text-ink-400 hover:text-ink hover:bg-ink-50'
+                          }`
+                        }
+                      >
+                        <c.icon size={13} strokeWidth={1.75} />
+                        {t(c.labelKey)}
+                      </NavLink>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Fragment>
+          )
+        })}
       </>
     )
   }
 
-  const primary = items.filter((n) => !MANAGEMENT_PATHS.has(n.to))
+  const primary = topLevel.filter((n) => !MANAGEMENT_PATHS.has(n.to))
   const management = items.filter((n) => MANAGEMENT_PATHS.has(n.to))
   const anyMgmtActive = management.some((n) => {
     if (typeof window === 'undefined') return false
@@ -203,22 +315,65 @@ function MobileNavList({
 
   return (
     <>
-      {primary.map((n) => (
-        <NavLink
-          key={n.to}
-          to={n.to}
-          end={n.to === '/'}
-          className={({ isActive }) =>
-            `relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-              isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
-            }`
-          }
-        >
-          <n.icon size={18} strokeWidth={1.75} />
-          {n.label}
-          <NavBadge count={badgeFor(n.to)} light={false} />
-        </NavLink>
-      ))}
+      {primary.map((n) => {
+        const children = childrenOf(n.to)
+        const open = expanded.has(n.to)
+        return (
+          <Fragment key={n.to}>
+            <div className="relative flex items-center" onClick={(e) => e.stopPropagation()}>
+              <NavLink
+                to={n.to}
+                end={n.to === '/'}
+                className={({ isActive }) =>
+                  `relative flex min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2.5 pl-3 pr-2 text-sm font-medium transition-colors ${
+                    isActive ? 'bg-ink text-white' : 'text-ink-600 hover:bg-ink-50 hover:text-ink'
+                  }`
+                }
+              >
+                <n.icon size={18} strokeWidth={1.75} />
+                <span className="truncate">{n.label}</span>
+                <NavBadge count={badgeFor(n.to)} light={false} />
+              </NavLink>
+              {children.length > 0 && (
+                <motion.button
+                  onClick={() => toggleParent(n.to)}
+                  animate={{ rotate: open ? 0 : -90 }}
+                  transition={{ duration: 0.18 }}
+                  className="mr-1 shrink-0 rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-ink-50 hover:text-ink dark:hover:bg-[rgb(28,28,28)]"
+                >
+                  <ChevronDown size={14} strokeWidth={1.75} />
+                </motion.button>
+              )}
+            </div>
+            <AnimatePresence initial={false}>
+              {children.length > 0 && open && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden"
+                >
+                  {children.map((c) => (
+                    <NavLink
+                      key={c.to}
+                      to={c.to}
+                      className={({ isActive }) =>
+                        `relative ml-10 flex items-center gap-2 rounded-lg border-l border-line py-1.5 pl-3 pr-3 text-2xs font-medium transition-colors ${
+                          isActive ? 'text-ink bg-ink-50' : 'text-ink-400 hover:text-ink hover:bg-ink-50'
+                        }`
+                      }
+                    >
+                      <c.icon size={13} strokeWidth={1.75} />
+                      {t(c.labelKey)}
+                    </NavLink>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </Fragment>
+        )
+      })}
 
       {/* Management group — collapsible */}
       <div className="pt-1">

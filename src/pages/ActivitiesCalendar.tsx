@@ -14,6 +14,9 @@ import { Badge } from '../components/ui/Badge'
 import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { Modal } from '../components/ui/Modal'
+import { ActivityRings } from '../components/ui/ActivityRings'
+import { MotionBorder } from '../components/ui/MotionBorder'
+import { colorForIntensity, GAUGE_CORAL, GAUGE_GREEN, GAUGE_SLATE, GAUGE_TEAL } from '../components/ui/gaugeColors'
 import { ActivityModal } from '../components/ActivityModal'
 import { ActivitiesStatsPanel } from '../components/ActivitiesStatsPanel'
 import { useToast } from '../context/ToastContext'
@@ -24,6 +27,7 @@ import {
   ACTIVITY_STATUS_META,
 } from '../lib/types'
 import type { ScheduledActivityType, ScheduledActivityStatus, ScheduledActivity, Profile, Company } from '../lib/types'
+import { eur } from '../lib/format'
 
 const TYPE_ICON: Record<ScheduledActivityType, React.ReactNode> = {
   call: <Phone size={10} strokeWidth={2} />,
@@ -78,6 +82,8 @@ export default function ActivitiesCalendar() {
   const [defaultDate, setDefaultDate] = useState<string | undefined>(undefined)
   const [dayModalDate, setDayModalDate] = useState<Date | null>(null)
   const [rightClickedKey, setRightClickedKey] = useState<string | null>(null)
+  /* Desktop hover-expand: the focused day stretches, siblings slide aside */
+  const [grownKey, setGrownKey] = useState<string | null>(null)
 
   const visible = useMemo(() => {
     if (!user) return []
@@ -89,6 +95,24 @@ export default function ActivitiesCalendar() {
   }, [activities, scopeMine, user])
 
   const grid = useMemo(() => buildMonthGrid(cursor.getFullYear(), cursor.getMonth()), [cursor])
+
+  /* Booked-revenue heat per day (Apple-gauge palette) */
+  const revenueByDay = useMemo(() => {
+    const m = new Map<string, number>()
+    const counted = deals.filter(
+      (d) => (d.status === 'approved' || d.status === 'closed') && (!scopeMine || d.seller_id === user?.id),
+    )
+    for (const d of counted) {
+      const k = toLocalDate(new Date(d.created_at))
+      m.set(k, (m.get(k) || 0) + d.gross_value)
+    }
+    return m
+  }, [deals, scopeMine, user?.id])
+  const maxDayRevenue = useMemo(() => Math.max(...[...revenueByDay.values()], 1), [revenueByDay])
+  function dayHeat(d: Date): { value: number; t: number } {
+    const v = revenueByDay.get(toLocalDate(d)) || 0
+    return { value: v, t: v > 0 ? Math.max(0.18, Math.min(1, v / maxDayRevenue)) : 0 }
+  }
   const activitiesByDay = useMemo(() => {
     const m: Record<string, ScheduledActivity[]> = {}
     visible.forEach((a) => {
@@ -217,88 +241,175 @@ export default function ActivitiesCalendar() {
               {Array.from({ length: 35 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-lg" />)}
             </div>
           ) : (
-            <div className="mt-2 grid grid-cols-7 gap-1 sm:gap-1.5">
-              {grid.map((d, i) => {
-                const inMonth = d.getMonth() === cursor.getMonth()
-                const isToday = sameDay(d, today)
-                const key = toLocalDate(d)
-                const dayActivities = activitiesByDay[key] || []
-                const cellKey = `${key}-${i}`
-                const isHighlighted = rightClickedKey === cellKey
-                return (
-                  <div
-                    key={i}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      setRightClickedKey(cellKey)
-                      openContextMenu(e, cellContextItems(d))
-                      // Clear highlight after a moment if no other right-click happens
-                      setTimeout(() => setRightClickedKey((cur) => (cur === cellKey ? null : cur)), 1600)
-                    }}
-                    onClick={() => { if (inMonth) setDayModalDate(d) }}
-                    className={`group min-h-[72px] sm:min-h-[96px] cursor-pointer rounded-lg border p-1.5 transition-all ${
-                      isHighlighted
-                        ? 'border-ink ring-2 ring-ink/15 bg-ink-50/60'
-                        : inMonth
-                          ? 'border-line bg-surface hover:border-ink-200 hover:bg-ink-50/30'
-                          : 'border-transparent bg-ink-50/30'
-                    } ${isToday && !isHighlighted ? 'ring-1 ring-info/40' : ''}`}
-                  >
-                    <div className="mb-1 flex items-center justify-between">
+            <>
+              {/* Desktop — week rows; hovering a day stretches it and
+                  the neighbours glide aside to reveal its activities. */}
+              <div className="mt-2 hidden space-y-1 sm:block" onMouseLeave={() => setGrownKey(null)}>
+                {Array.from({ length: 6 }, (_, wi) => grid.slice(wi * 7, wi * 7 + 7)).map((week, wi) => (
+                  <div key={wi} className="flex gap-1">
+                    {week.map((d) => {
+                      const inMonth = d.getMonth() === cursor.getMonth()
+                      const isToday = sameDay(d, today)
+                      const key = toLocalDate(d)
+                      const dayActivities = (activitiesByDay[key] || []).filter((a) => a.visible_on_calendar !== false)
+                      const cellKey = `${key}-${wi}`
+                      const isHighlighted = rightClickedKey === cellKey
+                      const grown = grownKey === key && inMonth
+                      return (
+                        <motion.div
+                          key={cellKey}
+                          layout
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0, flexGrow: grown ? 2.8 : 1 }}
+                          transition={{
+                            layout: { type: 'spring', stiffness: 420, damping: 34 },
+                            duration: 0.25,
+                            delay: Math.min(wi * 0.03, 0.15),
+                          }}
+                          onMouseEnter={() => setGrownKey(key)}
+                          onClick={() => { if (inMonth) setDayModalDate(d) }}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            setRightClickedKey(cellKey)
+                            openContextMenu(e, cellContextItems(d))
+                            setTimeout(() => setRightClickedKey((cur) => (cur === cellKey ? null : cur)), 1600)
+                          }}
+                          style={{ flexBasis: 0, minWidth: 0 }}
+                          title={(() => { const h = dayHeat(d); return h.value > 0 ? `€${Math.round(h.value).toLocaleString('en')} booked` : undefined })()}
+                          className={`group relative min-h-[96px] cursor-pointer overflow-hidden rounded-lg border p-1.5 transition-colors ${
+                            isHighlighted
+                              ? 'border-ink ring-2 ring-ink/15 bg-ink-50/60'
+                              : inMonth
+                                ? 'border-line bg-surface hover:border-ink-200 hover:bg-ink-50/30 dark:hover:bg-[rgb(28,28,28)]'
+                                : 'border-transparent bg-ink-50/30'
+                          } ${isToday && !isHighlighted ? 'ring-1 ring-info/40' : ''}`}
+                        >
+                          {/* Revenue heat wash (gauge palette) */}
+                          {inMonth && dayHeat(d).t > 0 && (
+                            <div
+                              aria-hidden
+                              className="pointer-events-none absolute inset-0"
+                              style={{ background: `linear-gradient(160deg, ${colorForIntensity(dayHeat(d).t)}2E, transparent 65%)` }}
+                            />
+                          )}
+                          {/* Today / hover gradient wash */}
+                          {(isToday || grown) && (
+                            <div
+                              aria-hidden
+                              className="pointer-events-none absolute inset-0"
+                              style={{
+                                background:
+                                  isToday
+                                    ? 'linear-gradient(135deg, rgba(59,130,246,0.10), transparent 55%)'
+                                    : 'linear-gradient(135deg, rgba(59,130,246,0.06), transparent 50%)',
+                              }}
+                            />
+                          )}
+                          <div className="relative mb-1 flex items-center justify-between gap-1">
+                            <span
+                              className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-2xs font-medium num ${
+                                isToday ? 'bg-info text-white' : inMonth ? 'text-ink-600' : 'text-ink-300'
+                              }`}
+                            >
+                              {d.getDate()}
+                            </span>
+                            {inMonth && dayActivities.length > 0 && (
+                              <span className={`rounded-full bg-ink-100 px-1.5 text-2xs font-medium text-ink-500 transition-opacity ${grown ? 'opacity-0' : ''}`}>
+                                {dayActivities.length}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Collapsed dots → expanded chips crossfade */}
+                          {!grown ? (
+                            <div className="flex flex-wrap gap-0.5">
+                              {dayActivities.slice(0, 8).map((a) => {
+                                const c = a.color || ACTIVITY_TYPE_META[a.type].color
+                                return <span key={a.id} className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />
+                              })}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {dayActivities.slice(0, 4).map((a, i) => (
+                                <CalendarChip
+                                  key={a.id}
+                                  activity={a}
+                                  index={i}
+                                  onClick={(e) => { e.stopPropagation(); openEdit(a) }}
+                                  onContext={(e) => { e.stopPropagation(); openContextMenu(e, activityContextItems(a)) }}
+                                />
+                              ))}
+                              {dayActivities.length > 4 && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setDayModalDate(d) }}
+                                  className="text-2xs text-ink-400 hover:text-ink hover:underline"
+                                >
+                                  +{dayActivities.length - 4} more
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </motion.div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+
+              {/* Mobile — compact grid with dots */}
+              <div className="mt-2 grid grid-cols-7 gap-1 sm:hidden">
+                {grid.slice(0, 35).map((d, i) => {
+                  const inMonth = d.getMonth() === cursor.getMonth()
+                  const isToday = sameDay(d, today)
+                  const key = toLocalDate(d)
+                  const dayActivities = activitiesByDay[key] || []
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => { if (inMonth) setDayModalDate(d) }}
+                      style={inMonth && dayHeat(d).t > 0 ? { background: `linear-gradient(160deg, ${colorForIntensity(dayHeat(d).t)}26, transparent 70%)` } : undefined}
+                      className={`min-h-[56px] rounded-lg border p-1 text-left transition-colors ${
+                        inMonth ? 'border-line bg-surface' : 'border-transparent bg-ink-50/30'
+                      } ${isToday ? 'ring-1 ring-info/40' : ''}`}
+                    >
                       <span
-                        className={`grid h-5 w-5 place-items-center rounded-full text-2xs font-medium ${
+                        className={`mb-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-medium num ${
                           isToday ? 'bg-info text-white' : inMonth ? 'text-ink-600' : 'text-ink-300'
                         }`}
                       >
                         {d.getDate()}
                       </span>
-                      {inMonth && dayActivities.length > 0 && (
-                        <span className="hidden sm:inline-block rounded-full bg-ink-100 px-1.5 text-2xs font-medium text-ink-500">{dayActivities.length}</span>
-                      )}
-                    </div>
-
-                    {/* Mobile: just colored dots */}
-                    <div className="flex flex-wrap gap-0.5 sm:hidden">
-                      {dayActivities.slice(0, 6).map((a) => {
-                        const c = a.color || ACTIVITY_TYPE_META[a.type].color
-                        return <span key={a.id} className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />
-                      })}
-                      {dayActivities.length > 6 && <span className="text-2xs text-ink-400">+{dayActivities.length - 6}</span>}
-                    </div>
-
-                    {/* Desktop: chips */}
-                    <div className="hidden sm:block space-y-1">
-                      {dayActivities.slice(0, 2).map((a) => (
-                        <CalendarChip
-                          key={a.id}
-                          activity={a}
-                          onClick={(e) => { e.stopPropagation(); openEdit(a) }}
-                          onContext={(e) => { e.stopPropagation(); openContextMenu(e, activityContextItems(a)) }}
-                        />
-                      ))}
-                      {dayActivities.length > 2 && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setDayModalDate(d) }}
-                          className="text-2xs text-ink-400 hover:text-ink hover:underline"
-                        >
-                          +{dayActivities.length - 2} more
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                      <span className="flex flex-wrap gap-0.5">
+                        {dayActivities.slice(0, 4).map((a) => (
+                          <span key={a.id} className="h-1 w-1 rounded-full" style={{ background: a.color || ACTIVITY_TYPE_META[a.type].color }} />
+                        ))}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </>
           )}
 
           {/* Legend */}
-          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3 text-2xs text-ink-500">
-            {(Object.keys(ACTIVITY_TYPE_META) as ScheduledActivityType[]).map((t) => (
-              <span key={t} className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full" style={{ background: ACTIVITY_TYPE_META[t].color }} />
-                {ACTIVITY_TYPE_META[t].label}
-              </span>
-            ))}
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-3 text-2xs text-ink-500">
+            <div className="flex flex-wrap items-center gap-3">
+              {(Object.keys(ACTIVITY_TYPE_META) as ScheduledActivityType[]).map((t) => (
+                <span key={t} className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full" style={{ background: ACTIVITY_TYPE_META[t].color }} />
+                  {ACTIVITY_TYPE_META[t].label}
+                </span>
+              ))}
+            </div>
+            {/* Booked heat legend — gauge spectrum */}
+            <span className="inline-flex items-center gap-1.5">
+              Booked
+              <span
+                className="inline-block h-2 w-20 rounded-full"
+                style={{ background: `linear-gradient(90deg, ${GAUGE_SLATE}, ${GAUGE_TEAL}, ${GAUGE_GREEN})` }}
+              />
+              <span className="num text-ink-400">max {eur(maxDayRevenue)}</span>
+            </span>
             <span className="ml-auto hidden sm:inline-flex items-center gap-1 text-ink-400">
               <EyeOff size={11} strokeWidth={1.75} /> Hidden meetings only show for their owner.
             </span>
@@ -355,9 +466,10 @@ export default function ActivitiesCalendar() {
 /* Calendar chip on the day cell (desktop)                             */
 /* ------------------------------------------------------------------ */
 function CalendarChip({
-  activity, onClick, onContext,
+  activity, index = 0, onClick, onContext,
 }: {
   activity: ScheduledActivity
+  index?: number
   onClick: (e: React.MouseEvent) => void
   onContext: (e: React.MouseEvent) => void
 }) {
@@ -367,13 +479,13 @@ function CalendarChip({
   const hidden = activity.visible_on_calendar === false
   return (
     <motion.button
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: hidden ? 0.55 : 1, x: 0 }}
+      transition={{ duration: 0.22, delay: index * 0.05 }}
       onClick={onClick}
       onContextMenu={onContext}
-      className="flex w-full items-center gap-1.5 rounded-md bg-surface px-1.5 py-1 text-left text-2xs transition-colors hover:brightness-95"
-      style={{ borderLeft: `3px solid ${color}`, background: `${color}15`, opacity: hidden ? 0.55 : 1 }}
+      className="flex w-full items-center gap-1 rounded-md border border-line/60 bg-surface px-1.5 py-1 text-left text-2xs shadow-sm transition-colors hover:border-ink-200 hover:brightness-[0.98] dark:hover:brightness-125"
+      style={{ borderLeft: `3px solid ${color}` }}
       title={`${tMeta.label}: ${activity.title || ''}${hidden ? ' · hidden from others' : ''}`}
     >
       <span className="shrink-0 text-ink-500 num">{time}</span>
@@ -410,25 +522,14 @@ function DayModal({
 
   const isToday = sameDay(date, new Date())
   const dateLabel = date.toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const completedCount = activities.filter((a) => a.status === 'completed').length
+  const completionPct = activities.length > 0 ? (completedCount / activities.length) * 100 : 0
 
   return (
     <Modal
       open={!!date}
       onClose={onClose}
       size="md"
-      title={
-        <div className="flex items-center gap-2 pr-6">
-          <CalIcon size={18} strokeWidth={1.75} className="text-info" />
-          <span className="truncate">{dateLabel}</span>
-          {isToday && <Badge tone="info" className="ml-1">Today</Badge>}
-        </div>
-      }
-      desc={
-        <span className="text-2xs text-ink-400">
-          {activities.length} {activities.length === 1 ? 'activity' : 'activities'} scheduled.
-          {' '}Click an activity to expand its details.
-        </span>
-      }
       footer={
         <div className="flex w-full items-center gap-2">
           <Button variant="secondary" size="sm" onClick={onClose}>Close</Button>
@@ -438,8 +539,40 @@ function DayModal({
         </div>
       }
     >
+      {/* Gradient day header */}
+      <div className="relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-2xl bg-gradient-to-br from-ink-900 via-ink-800 to-ink-700 px-5 py-4 text-white dark:from-[rgb(30,30,30)] dark:via-[rgb(23,23,23)] dark:to-[rgb(38,38,38)]">
+        <div aria-hidden className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-info/25 blur-2xl" />
+        <div
+          aria-hidden
+          className="sheen-x pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+          style={{ '--sheen-cycle': '8s' } as React.CSSProperties}
+        />
+        <div className="relative flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-xs font-medium text-white/60">
+              {isToday && (
+                <span className="rounded-full border border-info/40 bg-info/20 px-1.5 py-px text-2xs font-bold text-sky-200">Today</span>
+              )}
+              <CalIcon size={12} strokeWidth={2} />
+            </p>
+            <p className="truncate text-base font-bold leading-tight">{dateLabel}</p>
+            <p className="num mt-0.5 text-2xs text-white/55">
+              {activities.length} {activities.length === 1 ? 'activity' : 'activities'} · {completedCount} done · click one to expand
+            </p>
+          </div>
+          <ActivityRings
+            rings={[{ value: completionPct, label: 'day', colors: ['#34d399', '#22d3ee'] }]}
+            size={64}
+            thickness={7}
+            delay={0.2}
+          >
+            <span className="num text-2xs font-extrabold">{Math.round(completionPct)}%</span>
+          </ActivityRings>
+        </div>
+      </div>
+
       {activities.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-12">
+        <div className="flex flex-col items-center gap-3 py-10">
           <Inbox size={24} strokeWidth={1.75} className="text-ink-300" />
           <p className="text-sm text-ink-400">Nothing scheduled on this day.</p>
           <Button variant="subtle" size="sm" icon={<Plus size={13} strokeWidth={1.75} />} onClick={() => onNew(date)}>
@@ -448,10 +581,11 @@ function DayModal({
         </div>
       ) : (
         <ul className="space-y-1.5">
-          {activities.map((a) => (
+          {activities.map((a, i) => (
             <DayActivityRow
               key={a.id}
               activity={a}
+              index={i}
               expanded={expandedId === a.id}
               onToggle={() => setExpandedId((cur) => (cur === a.id ? null : a.id))}
               profileMap={profileMap}
@@ -474,10 +608,11 @@ function DayModal({
 /* Activity row in the Day modal (expandable dropdown)                 */
 /* ------------------------------------------------------------------ */
 function DayActivityRow({
-  activity, expanded, onToggle, profileMap, companyMap, canManage,
+  activity, index = 0, expanded, onToggle, profileMap, companyMap, canManage,
   onEdit, onContext, onSetStatus, onDelete,
 }: {
   activity: ScheduledActivity
+  index?: number
   expanded: boolean
   onToggle: () => void
   profileMap: Record<string, Profile>
@@ -501,7 +636,10 @@ function DayActivityRow({
   const hidden = activity.visible_on_calendar === false
 
   return (
-    <li
+    <motion.li
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: Math.min((index ?? 0) * 0.05, 0.25) }}
       className={`overflow-hidden rounded-xl border transition-colors ${
         expanded ? 'border-ink-200 bg-ink-50/30' : 'border-line bg-surface hover:border-ink-200'
       }`}
@@ -541,36 +679,38 @@ function DayActivityRow({
             className="overflow-hidden"
           >
             <div className="border-t border-line px-3 py-3 space-y-3">
-              {/* Details grid */}
+              {/* Details grid — gradient-stroke tiles */}
               <div className="grid grid-cols-2 gap-2 text-2xs">
-                <Detail icon={<UserIcon size={11} strokeWidth={1.75} />} label="Led by">
+                <Detail icon={<UserIcon size={11} strokeWidth={1.75} />} label="Led by" tone="#3b82f6">
                   <span className="flex items-center gap-1.5">
                     <Avatar name={owner?.full_name || '?'} color={owner?.avatar_color} url={owner?.avatar_url} size={16} />
                     <span className="truncate">{owner?.full_name || 'Unknown'}</span>
                   </span>
                 </Detail>
-                <Detail icon={<Building2 size={11} strokeWidth={1.75} />} label="Linked lead">
+                <Detail icon={<Building2 size={11} strokeWidth={1.75} />} label="Linked lead" tone="#8b5cf6">
                   {company ? company.name : <span className="text-ink-400">—</span>}
                 </Detail>
-                <Detail icon={<Clock size={11} strokeWidth={1.75} />} label="When">
+                <Detail icon={<Clock size={11} strokeWidth={1.75} />} label="When" tone="#f59e0b">
                   <span className="num">{startTime} – {endTime}</span>
                 </Detail>
-                <Detail icon={<Clock size={11} strokeWidth={1.75} />} label="Duration">
+                <Detail icon={<Clock size={11} strokeWidth={1.75} />} label="Duration" tone="#14b8a6">
                   {activity.duration_min} min
                 </Detail>
-                <Detail icon={<ListTodo size={11} strokeWidth={1.75} />} label="Type">
+                <Detail icon={<ListTodo size={11} strokeWidth={1.75} />} label="Type" tone={color}>
                   {tMeta.label}
                 </Detail>
-                <Detail icon={<Check size={11} strokeWidth={1.75} />} label="Status">
+                <Detail icon={<Check size={11} strokeWidth={1.75} />} label="Status" tone={activity.status === 'completed' ? '#22c55e' : '#9ca3af'}>
                   <Badge tone={sMeta.tone}>{sMeta.label}</Badge>
                 </Detail>
               </div>
 
               {/* Purpose / notes */}
               {activity.notes && (
-                <div className="rounded-lg bg-ink-50/60 p-2.5">
-                  <p className="mb-0.5 text-2xs font-medium uppercase text-ink-400">Purpose / notes</p>
-                  <p className="whitespace-pre-wrap text-sm text-ink-700">{activity.notes}</p>
+                <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-info/[0.07] to-transparent p-[1px]">
+                  <div className="rounded-[7px] bg-surface p-2.5 dark:bg-[rgb(23,23,23)]">
+                    <p className="mb-0.5 text-2xs font-medium uppercase tracking-wide text-ink-400">Purpose / notes</p>
+                    <p className="whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{activity.notes}</p>
+                  </div>
                 </div>
               )}
 
@@ -597,18 +737,20 @@ function DayActivityRow({
           </motion.div>
         )}
       </AnimatePresence>
-    </li>
+    </motion.li>
   )
 }
 
-function Detail({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+function Detail({ icon, label, tone = '#9ca3af', children }: { icon: React.ReactNode; label: string; tone?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg bg-ink-50/60 px-2.5 py-2">
-      <span className="mt-0.5 text-ink-400">{icon}</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-2xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
-        <div className="mt-0.5 truncate text-sm text-ink-700">{children}</div>
+    <MotionBorder colors={[tone, `${tone}44`, tone]} radius="rounded-lg" speed={8}>
+      <div className="flex items-start gap-2 px-2.5 py-2">
+        <span className="mt-0.5" style={{ color: tone }}>{icon}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-2xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
+          <div className="mt-0.5 truncate text-sm text-ink-700 dark:text-ink-200">{children}</div>
+        </div>
       </div>
-    </div>
+    </MotionBorder>
   )
 }

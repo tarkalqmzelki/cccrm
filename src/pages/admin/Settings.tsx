@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette, Languages, Globe } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette, Languages, Globe, Swords, Store } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
+import { useAuth } from '../../context/AuthContext'
 import { Card, CardHeader } from '../../components/ui/Card'
 import { Button } from '../../components/ui/Button'
 import { Input, Field, Textarea } from '../../components/ui/Input'
@@ -21,9 +22,13 @@ import { BroadcastManager } from '../../components/BroadcastManager'
 import { ContractTemplateManager } from '../../components/ContractTemplateManager'
 import { LanguageSettingsManager } from '../../components/LanguageSettingsManager'
 import { PlatformLocaleManager } from '../../components/PlatformLocaleManager'
+import { ChallengesManager } from '../../components/ChallengesManager'
+import { MarketplaceManager } from '../../components/marketplace/MarketplaceManager'
 
 type Category =
   | 'commissions'
+  | 'challenges'
+  | 'lead-marketplace'
   | 'design'
   | 'locales'
   | 'languages'
@@ -48,6 +53,8 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'commissions',       label: 'Commissions',       icon: Settings2,  group: 'Commissions' },
+  { id: 'challenges',        label: 'Challenges',        icon: Swords,     group: 'Gamification' },
+  { id: 'lead-marketplace',  label: 'Lead Marketplace',  icon: Store,      group: 'Gamification' },
   { id: 'design',            label: 'Design Settings',   icon: Palette,    group: 'Commissions' },
   { id: 'locales',           label: 'Platform Locales',  icon: Globe,      group: 'Commissions' },
   { id: 'languages',         label: 'Language Settings', icon: Languages,  group: 'Commissions' },
@@ -66,6 +73,8 @@ const NAV_ITEMS: NavItem[] = [
 
 const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
   commissions:       { title: 'Commissions',                      desc: 'Configure level thresholds, commission rates, and referral bonuses.' },
+  challenges:        { title: 'Challenges',                       desc: 'Create quests and push them to every member — auto-checked functional goals or self-reported regular ones, with points and optional cash bonuses.' },
+  'lead-marketplace': { title: 'Lead Marketplace',                desc: 'Feed the team a pool of companies. Import via JSON (same shape as creating a lead), publish in bulk, set claim timers, or allocate directly to one person.' },
   design:            { title: 'Design settings',                 desc: 'Platform-wide branding — logo URLs for light and dark mode, shown in the sidebar and on the login page.' },
   locales:           { title: 'Platform locales',               desc: 'Translate the platform interface (nav, buttons, labels) into multiple languages. Users pick their locale from Profile Settings.' },
   languages:         { title: 'Language settings',               desc: 'Translate every fixed label on printed invoices and contracts. Add a language, translate the entries, pick it when generating documents.' },
@@ -84,6 +93,7 @@ const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
 
 export default function SettingsPage() {
   const { push } = useToast()
+  const { user } = useAuth()
   const { data, loading } = useAsync(async () => db.getSettings(), [])
   const [form, setForm] = useState<Settings>(DEFAULT_SETTINGS)
   const [saving, setSaving] = useState(false)
@@ -240,6 +250,12 @@ export default function SettingsPage() {
           {active === 'invoice-settings' && (
             <InvoiceSettingsPanel />
           )}
+
+          {/* ---------- Challenges ---------- */}
+          {active === 'challenges' && <ChallengesManager adminId={user?.id || ''} />}
+
+          {/* ---------- Lead Marketplace ---------- */}
+          {active === 'lead-marketplace' && <MarketplaceManager adminId={user?.id || ''} />}
 
           {/* ---------- Design settings ---------- */}
           {active === 'design' && (

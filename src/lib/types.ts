@@ -48,6 +48,8 @@ export interface Company {
   address: string
   logo_url: string
   summary: string
+  /** Direct contact line (schema61 — populated from marketplace claims). */
+  phone?: string
   created_by: string | null
   lead_status: LeadStatus
   lead_status_updated_at: string | null
@@ -443,6 +445,96 @@ export interface Payout {
   paid_at: string | null
 }
 
+/* =====================================================================
+ * CHALLENGES — admin-authored quests (schema59)
+ * ===================================================================== */
+
+/** 'functional' challenges are auto-checked against platform data;
+ *  'regular' ones are free-form and self-reported by the member. */
+export type ChallengeType = 'functional' | 'regular'
+
+/** Which platform action auto-checks a functional challenge. */
+export type FunctionalChallengeType = 'lead_created' | 'deal_submitted'
+
+export const FUNCTIONAL_CHALLENGE_META: Record<FunctionalChallengeType, { label: string; hint: string }> = {
+  lead_created:   { label: 'Leads created',   hint: 'Counts new leads the member creates after the challenge goes live.' },
+  deal_submitted: { label: 'Deals submitted', hint: 'Counts new deals the member submits after the challenge goes live.' },
+}
+
+export interface Challenge {
+  id: string
+  title: string
+  description: string
+  type: ChallengeType
+  functional_type: FunctionalChallengeType
+  target_count: number
+  points: number
+  financial_bonus: number
+  status: 'active' | 'ended'
+  /** 'solo' = per-member quest · 'team' = whole company pools progress */
+  scope?: 'solo' | 'team'
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChallengeProgress {
+  id: string
+  challenge_id: string
+  user_id: string
+  progress: number
+  completed_at: string | null
+  bonus_paid: boolean
+  updated_at: string
+}
+
+export const CHALLENGE_TYPE_META: Record<ChallengeType, { label: string; desc: string }> = {
+  functional: { label: 'Functional', desc: 'Auto-checked by the platform — progress is detected automatically.' },
+  regular:    { label: 'Regular',    desc: 'Free-form quest — members report their own progress.' },
+}
+
+export type ChallengeScope = 'solo' | 'team'
+
+/* =====================================================================
+ * LEADS MARKETPLACE (schema61) — import pool feeding the Leads page
+ * ===================================================================== */
+
+/** Mirrors the company/lead creation shape so JSON imports map 1:1. */
+export interface MarketLead {
+  id: string
+  name: string
+  website: string
+  domain: string
+  vat_number: string
+  industry: string
+  description: string
+  address: string
+  logo_url: string
+  summary: string
+  /** Direct contact line — essential for outreach after claiming. */
+  phone: string
+  /** false = hidden from the marketplace (import default). */
+  published: boolean
+  /** Claim timer — locked until this instant (null = claimable now). */
+  unlock_at: string | null
+  /** Reserved for this member only. */
+  allocated_to: string | null
+  claimed_by: string | null
+  claimed_at: string | null
+  imported_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function marketLeadState(m: Pick<MarketLead, 'published' | 'unlock_at' | 'allocated_to' | 'claimed_by'>, now = Date.now()):
+  'claimed' | 'draft' | 'allocated' | 'locked' | 'live' {
+  if (m.claimed_by) return 'claimed'
+  if (!m.published) return 'draft'
+  if (m.unlock_at && new Date(m.unlock_at).getTime() > now) return 'locked'
+  if (m.allocated_to) return 'allocated'
+  return 'live'
+}
+
 export interface Settings {
   id: number
   l1_threshold: number
@@ -507,6 +599,8 @@ export type NotificationKey =
   | 'user_whats_new'
   | 'user_broadcast'
   | 'user_chat'
+  | 'user_challenge_new'
+  | 'user_challenge_completed'
 
 export interface NotificationKeyMeta {
   key: NotificationKey
@@ -530,6 +624,8 @@ export const NOTIFICATION_KEYS: NotificationKeyMeta[] = [
   { key: 'user_whats_new',        label: "What's new posts",        desc: 'When an admin publishes a new release note.', role: 'user'  },
   { key: 'user_broadcast',        label: 'Broadcast announcements', desc: 'Platform-wide announcements sent by admins.', role: 'user'  },
   { key: 'user_chat',             label: 'General chat messages',   desc: 'When someone posts in the platform-wide general chat.', role: 'user' },
+  { key: 'user_challenge_new',    label: 'New challenge pushed',    desc: 'When HQ publishes a new challenge for the team.',       role: 'user' },
+  { key: 'user_challenge_completed', label: 'Challenge completed',  desc: 'When you complete a challenge (points & bonus recap).', role: 'user' },
 ]
 
 export type NotificationTone = 'low' | 'normal' | 'high' | 'urgent'

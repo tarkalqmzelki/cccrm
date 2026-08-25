@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { useAuth } from './context/AuthContext'
 import { AppShell } from './components/layout/AppShell'
 import { ContextMenuHost } from './components/ui/ContextMenu'
@@ -23,6 +23,10 @@ import CompanyDetail from './pages/CompanyDetail'
 import OpportunityDetail from './pages/OpportunityDetail'
 import InboxPage from './pages/InboxPage'
 import GivenAccess from './pages/GivenAccess'
+import Challenges from './pages/Challenges'
+import MarketplacePage from './pages/MarketplacePage'
+/* The world-map bundle (topojson + d3-geo) is heavy — load it on demand. */
+const MapPage = lazy(() => import('./pages/MapPage'))
 import type { Role } from './lib/types'
 
 function Protected({ children, roles }: { children: ReactNode; roles?: Role[] }) {
@@ -59,6 +63,9 @@ function Shell() {
         <Route path="/deals" element={<Deals />} />
         <Route path="/deals/:id" element={<DealDetail />} />
         <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/challenges" element={<Challenges />} />
+        <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/map" element={<Suspense fallback={<FullLoader />}><MapPage /></Suspense>} />
         <Route path="/referrals" element={<Referrals />} />
         <Route path="/payouts" element={<Payouts />} />
         <Route path="/finances" element={<Protected roles={['admin']}><Finances /></Protected>} />

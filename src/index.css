@@ -200,6 +200,185 @@ body {
     100% { transform: scale(2.2); opacity: 0; }
   }
   .status-ring { animation: status-ring 1.8s ease-out infinite; }
+
+  /* Running gradient border — pure CSS so per-second re-renders
+     (countdown timers etc.) never restart the sweep. */
+  @keyframes mb-spin {
+    to { transform: rotate(360deg); }
+  }
+  .mb-sweep {
+    will-change: transform;
+    animation: mb-spin var(--mb-speed, 6s) linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mb-sweep { animation-duration: 60s; }
+  }
+
+  /* Sheen sweep — pure CSS with a baked-in pause so React re-renders
+     (countdown ticks, data refreshes) never restart it. */
+  @keyframes sheen-x {
+    0%   { transform: translateX(-160%) skewX(-14deg); }
+    18%  { transform: translateX(420%) skewX(-14deg); }
+    100% { transform: translateX(420%) skewX(-14deg); }
+  }
+  .sheen-x {
+    will-change: transform;
+    animation: sheen-x var(--sheen-cycle, 9s) ease-in-out infinite;
+  }
+
+  /* ================================================================= */
+  /* LIQUID GLASS NAV — liquid-glass-studio-style rim refraction        */
+  /* ================================================================= */
+
+  /* Fallback material (all engines) */
+  .glass-refract {
+    position: relative;
+    isolation: isolate;
+    border-radius: 30px;
+    background: linear-gradient(180deg, rgba(16,16,19,0.78) 0%, rgba(10,10,12,0.66) 55%, rgba(14,14,17,0.74) 100%);
+    -webkit-backdrop-filter: blur(14px) saturate(170%);
+    backdrop-filter: blur(14px) saturate(170%);
+    border: 1px solid rgba(255,255,255,0.11);
+    box-shadow:
+      0 24px 60px -18px rgba(0,0,0,0.65),
+      inset 0 1.5px 0 rgba(255,255,255,0.14),
+      inset 1.5px 0 8px -3px rgba(103,232,249,0.14),
+      inset -1.5px 0 8px -3px rgba(244,114,182,0.12);
+  }
+  .glass-refract.light {
+    background: linear-gradient(180deg, rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.30) 55%, rgba(255,255,255,0.42) 100%);
+    border-color: rgba(255,255,255,0.62);
+    box-shadow:
+      0 24px 60px -18px rgba(10,10,10,0.35),
+      inset 0 1.5px 0 rgba(255,255,255,0.9),
+      inset 1.5px 0 8px -3px rgba(103,232,249,0.28),
+      inset -1.5px 0 8px -3px rgba(244,114,182,0.24);
+  }
+  /* Chromium + Safari 18+: real rim refraction through the SVG lens.
+     Declared after the fallback so supporting engines upgrade. */
+  .glass-refract.lens {
+    -webkit-backdrop-filter: blur(3px) url(#lq-lens) saturate(190%) brightness(1.02);
+    backdrop-filter: blur(3px) url(#lq-lens) saturate(190%) brightness(1.02);
+  }
+  .glass-refract.light.lens {
+    -webkit-backdrop-filter: blur(2px) url(#lq-lens) saturate(210%) brightness(1.09);
+    backdrop-filter: blur(2px) url(#lq-lens) saturate(210%) brightness(1.09);
+  }
+  /* Top gloss line over the glass */
+  .glass-refract::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.14) 0%, transparent 22%),
+      radial-gradient(120% 60% at 50% 115%, rgba(255,255,255,0.08) 0%, transparent 60%);
+  }
+  .glass-refract.light::before {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.55) 0%, transparent 26%),
+      radial-gradient(120% 60% at 50% 115%, rgba(255,255,255,0.5) 0%, transparent 60%);
+  }
+
+
+  /* Floating pill container */
+  .liquid-nav {
+    position: relative;
+    isolation: isolate;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.52) 55%, rgba(255,255,255,0.62) 100%);
+    -webkit-backdrop-filter: blur(42px) saturate(200%);
+    backdrop-filter: blur(42px) saturate(200%);
+    border: 1px solid rgba(255,255,255,0.65);
+    box-shadow:
+      0 24px 60px -18px rgba(10,10,10,0.38),
+      0 4px 14px -6px rgba(10,10,10,0.18),
+      inset 0 1.5px 0 rgba(255,255,255,0.95),
+      inset 0 -1px 1px rgba(255,255,255,0.35);
+  }
+  .dark .liquid-nav {
+    background: linear-gradient(180deg, rgba(44,44,48,0.72) 0%, rgba(22,22,25,0.58) 55%, rgba(30,30,34,0.66) 100%);
+    border-color: rgba(255,255,255,0.12);
+    box-shadow:
+      0 24px 60px -18px rgba(0,0,0,0.65),
+      0 4px 14px -6px rgba(0,0,0,0.4),
+      inset 0 1.5px 0 rgba(255,255,255,0.16),
+      inset 0 -1px 1px rgba(255,255,255,0.05);
+  }
+  /* Diagonal refraction sheen across the whole pill */
+  .liquid-nav::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(120% 60% at 15% 0%, rgba(255,255,255,0.45) 0%, transparent 45%),
+      radial-gradient(120% 70% at 85% 110%, rgba(255,255,255,0.28) 0%, transparent 50%);
+    mix-blend-mode: overlay;
+  }
+  .dark .liquid-nav::after {
+    background:
+      radial-gradient(120% 60% at 15% 0%, rgba(255,255,255,0.12) 0%, transparent 45%),
+      radial-gradient(120% 70% at 85% 110%, rgba(255,255,255,0.07) 0%, transparent 50%);
+  }
+
+  /* Active capsule — physically floating glass above the pill */
+  .liquid-capsule {
+    position: absolute;
+    background: linear-gradient(160deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.62) 50%, rgba(255,255,255,0.8) 100%);
+    -webkit-backdrop-filter: blur(26px) saturate(240%);
+    backdrop-filter: blur(26px) saturate(240%);
+    border: 1px solid rgba(255,255,255,0.85);
+    box-shadow:
+      0 10px 26px -8px rgba(10,10,10,0.35),
+      0 2px 6px -2px rgba(10,10,10,0.18),
+      inset 0 1.5px 0 rgba(255,255,255,1),
+      inset 0 -2px 4px rgba(255,255,255,0.5),
+      inset 1px 0 3px rgba(103,232,249,0.20),
+      inset -1px 0 3px rgba(249,168,212,0.18),
+      inset 0 -1px 3px rgba(253,224,71,0.16);
+  }
+  .liquid-capsule::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.15) 28%, transparent 55%),
+      radial-gradient(80% 40% at 50% 108%, rgba(255,255,255,0.75) 0%, transparent 70%);
+  }
+  .dark .liquid-capsule {
+    background: linear-gradient(160deg, rgba(90,90,96,0.75) 0%, rgba(48,48,54,0.6) 50%, rgba(64,64,70,0.7) 100%);
+    border-color: rgba(255,255,255,0.18);
+    box-shadow:
+      0 10px 26px -8px rgba(0,0,0,0.55),
+      0 2px 6px -2px rgba(0,0,0,0.3),
+      inset 0 1.5px 0 rgba(255,255,255,0.25),
+      inset 0 -2px 4px rgba(255,255,255,0.08),
+      inset 1px 0 3px rgba(103,232,249,0.14),
+      inset -1px 0 3px rgba(249,168,212,0.12),
+      inset 0 -1px 3px rgba(253,224,71,0.10);
+  }
+
+  /* Gradient stat tabs (Finances mobile) */
+  .glass-tabs {
+    background: rgba(255,255,255,0.55);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.6);
+    box-shadow: 0 10px 30px -12px rgba(10,10,10,0.25), inset 0 1px 0 rgba(255,255,255,0.8);
+  }
+  .dark .glass-tabs {
+    background: rgba(36,36,40,0.6);
+    border-color: rgba(255,255,255,0.1);
+    box-shadow: 0 10px 30px -12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+  }
 }
 
 /* Thin, calm scrollbars */

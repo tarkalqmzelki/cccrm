@@ -3,18 +3,20 @@ import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input, Field, Textarea } from './ui/Input'
 import { Avatar } from './ui/Avatar'
-import { Bell, Globe } from 'lucide-react'
+import { Bell, Globe, LayoutGrid } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useLocale } from '../context/LocaleContext'
 import { db } from '../lib/db'
 import { NotificationPreferences } from './NotificationPreferences'
+import { NavigationEditor } from './layout/NavigationEditor'
 
 export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, refresh } = useAuth()
   const { push } = useToast()
   const { locale, locales, setLocale, t } = useLocale()
+  const [navEditorOpen, setNavEditorOpen] = useState(false)
   const [full_name, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -92,6 +94,20 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
           <NotificationPreferences />
         </div>
 
+        {/* Mobile bottom-nav slot editor */}
+        <div className="border-t border-line pt-5">
+          <div className="mb-3 flex items-center gap-2">
+            <LayoutGrid size={15} strokeWidth={1.75} className="text-ink-600" />
+            <h3 className="text-sm font-semibold">Edit navigation</h3>
+          </div>
+          <p className="mb-3 text-xs leading-relaxed text-ink-400">
+            Choose the 4 shortcuts pinned to your mobile bottom bar — drag icons onto slots.
+          </p>
+          <Button variant="secondary" block onClick={() => setNavEditorOpen(true)}>
+            Configure bottom bar
+          </Button>
+        </div>
+
         {/* Language switcher — animated pills with the dimming overlay */}
         <div className="border-t border-line pt-5">
           <div className="mb-3 flex items-center gap-2">
@@ -118,6 +134,9 @@ export function ProfileModal({ open, onClose }: { open: boolean; onClose: () => 
           <p className="mt-2 text-2xs text-ink-400">Applies only to your account — other users keep their own language.</p>
         </div>
       </div>
+
+      {/* Drag-and-drop bottom-bar configurator */}
+      <NavigationEditor open={navEditorOpen} onClose={() => setNavEditorOpen(false)} />
     </Modal>
   )
 }
