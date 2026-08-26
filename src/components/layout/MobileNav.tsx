@@ -4,38 +4,18 @@ import { motion } from 'framer-motion'
 import { NAV } from './nav'
 import type { NavItem } from './nav'
 import { loadNavSlots } from './navSlots'
-import { LiquidGlassFilter, supportsLensFilter } from './LiquidGlassFilter'
 import { useAuth } from '../../context/AuthContext'
 import { useSidebarBadges } from '../../lib/hooks/useSidebarBadges'
 
-/** Tracks the app's own `.dark` class on <html> (in-app toggle). */
-function useAppDarkTheme(): boolean {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
-  useEffect(() => {
-    const obs = new MutationObserver(() => setDark(document.documentElement.classList.contains('dark')))
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-    return () => obs.disconnect()
-  }, [])
-  return dark
-}
-
 /**
- * Floating liquid-glass bottom nav (mobile) — liquid-glass-studio-style
- * rim refraction: on Chromium the live page bends through an SVG
- * displacement lens at the pill's edges; other engines get the layered
- * blur/saturation material. Customisation lives in Profile ▸
- * "Edit navigation".
+ * Floating bottom nav (mobile) — Instagram style: a slim solid dark
+ * pill, icon-only items, and a soft gray capsule behind the active
+ * icon. No labels, no glass. Red dots mark pending badges.
  */
 export function MobileNav() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const badges = useSidebarBadges(user)
-  const isDark = useAppDarkTheme()
-  const [lens, setLens] = useState(false)
-
-  useEffect(() => {
-    setLens(supportsLensFilter())
-  }, [])
 
   const [slots, setSlots] = useState<string[]>(() => {
     if (!user) return []
@@ -69,49 +49,43 @@ export function MobileNav() {
       className="lg:hidden fixed inset-x-0 z-40 flex justify-center px-3"
       style={{ bottom: 'calc(12px + var(--safe-bottom))' }}
     >
-      {/* SVG displacement-lens defs — rendered only when supported */}
-      {lens && <LiquidGlassFilter />}
-
-      <div className={`glass-refract w-auto px-1.5 py-2 ${isDark ? '' : 'light'}${lens ? ' lens' : ''}`}>
-        <div className="relative z-[2] flex items-stretch">
-          {visible.map((n) => {
-            const count = badgeFor(n.to)
-            const isActive = (() => {
-              const p = window.location.pathname
-              if (n.to === '/') return p === '/'
-              return p.startsWith(n.to)
-            })()
-            return (
-              <button
-                key={n.to}
-                type="button"
-                onClick={() => navigate(n.to)}
-                className={`relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[22px] px-5 py-2 text-[10px] font-bold transition-colors duration-200 ${
-                  isActive ? 'text-ink dark:text-white' : 'text-ink-400 dark:text-white/50'
-                }`}
-              >
-                {/* Active bubble — fills its slot so it reads big inside the slim bar */}
-                {isActive && (
-                  <motion.span
-                    layoutId="liquid-capsule"
-                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                    className="liquid-capsule rounded-[20px]"
-                    style={{ inset: '1px 2px' }}
-                  />
+      <div className="flex items-center gap-0.5 rounded-full border border-white/10 bg-[#0f0f12] p-1.5 shadow-[0_18px_44px_-12px_rgba(0,0,0,0.55)]">
+        {visible.map((n) => {
+          const count = badgeFor(n.to)
+          const isActive = (() => {
+            const p = window.location.pathname
+            if (n.to === '/') return p === '/'
+            return p.startsWith(n.to)
+          })()
+          return (
+            <button
+              key={n.to}
+              type="button"
+              onClick={() => navigate(n.to)}
+              aria-label={n.label}
+              title={n.label}
+              className={`relative flex h-11 min-w-[62px] items-center justify-center rounded-full px-4 transition-colors duration-200 ${
+                isActive ? 'text-white' : 'text-white/60 hover:text-white'
+              }`}
+            >
+              {/* Active capsule — the gray Instagram-style pill */}
+              {isActive && (
+                <motion.span
+                  layoutId="nav-active-pill"
+                  transition={{ type: 'spring', stiffness: 430, damping: 36 }}
+                  className="absolute inset-0 rounded-full bg-[#3c3c42]"
+                />
+              )}
+              <span className="relative">
+                <n.icon size={24} strokeWidth={2} style={{ fill: isActive ? 'currentColor' : 'none' }} />
+                {/* Instagram-style red dot for pending badges */}
+                {count > 0 && (
+                  <span className="absolute -right-1.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#ff3040] ring-2 ring-[#0f0f12]" />
                 )}
-                <span className="relative">
-                  <n.icon size={21} strokeWidth={2.25} style={{ fill: isActive ? 'currentColor' : 'none' }} />
-                  {count > 0 && (
-                    <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-neg px-1 text-[9px] font-bold text-white shadow-sm ring-2 ring-white/70 dark:ring-black/50">
-                      {count > 9 ? '9+' : count}
-                    </span>
-                  )}
-                </span>
-                <span className="relative max-w-full truncate px-0.5">{n.label}</span>
-              </button>
-            )
-          })}
-        </div>
+              </span>
+            </button>
+          )
+        })}
       </div>
     </nav>
   )
