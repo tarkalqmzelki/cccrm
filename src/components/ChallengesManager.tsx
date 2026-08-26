@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Pencil, Trash2, Zap, Target, Coins, Rocket, Square, Swords, Sparkles, UsersRound } from 'lucide-react'
+import { Plus, Pencil, Trash2, Zap, Target, Coins, Rocket, Square, Swords, Sparkles, UsersRound, Workflow } from 'lucide-react'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
 import { Button } from './ui/Button'
@@ -11,9 +11,10 @@ import { Skeleton } from './ui/Skeleton'
 import { SegmentedControl } from './ui/SegmentedControl'
 import { EmptyState } from './ui/EmptyState'
 import { MotionBorder } from './ui/MotionBorder'
+import { FlowCreator, emptyFlow, validateFlow } from './FlowCreator'
 import { useToast } from '../context/ToastContext'
-import { FUNCTIONAL_CHALLENGE_META } from '../lib/types'
-import type { Challenge, ChallengeType, FunctionalChallengeType } from '../lib/types'
+import { FUNCTIONAL_CHALLENGE_META, BONUS_SPLIT_META } from '../lib/types'
+import type { Challenge, ChallengeType, FunctionalChallengeType, RuleFlow } from '../lib/types'
 import { eur } from '../lib/format'
 
 /**
@@ -146,7 +147,12 @@ function AdminChallengeCard({
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {c.scope === 'team' && (
             <span className="inline-flex items-center gap-1 rounded-full border border-warn/25 bg-warnBg px-2 py-0.5 text-2xs font-semibold text-warn">
-              <UsersRound size={10} strokeWidth={2} /> Team quest
+              <UsersRound size={10} strokeWidth={2} /> Team · {BONUS_SPLIT_META[c.bonus_split ?? 'full'].label.toLowerCase()}
+            </span>
+          )}
+          {c.rule_flow && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-violet-300/40 bg-violet-100 px-2 py-0.5 text-2xs font-semibold text-violet-600 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-300">
+              <Workflow size={10} strokeWidth={2} /> Flow rule
             </span>
           )}
           {c.type === 'functional' && (
@@ -203,6 +209,9 @@ function ChallengeFormModal({
   const [bonus, setBonus] = useState(0)
   const [announce, setAnnounce] = useState(true)
   const [announceText, setAnnounceText] = useState('')
+  const [ruleMode, setRuleMode] = useState<'simple' | 'flow'>('simple')
+  const [flow, setFlow] = useState<RuleFlow | null>(null)
+  const [bonusSplit, setBonusSplit] = useState<'full' | 'equal' | 'contribution'>('full')
   const [saving, setSaving] = useState(false)
 
   // Hydrate when opening
@@ -217,6 +226,10 @@ function ChallengeFormModal({
     setTargetCount(editing?.target_count ?? 5)
     setPoints(editing?.points ?? 100)
     setBonus(editing?.financial_bonus ?? 0)
+    const f = editing?.rule_flow ?? null
+    setFlow(f ? { order: [...f.order], nodes: f.nodes.map((n) => ({ ...n })) } : null)
+    setRuleMode(f ? 'flow' : 'simple')
+    setBonusSplit(editing?.bonus_split ?? 'full')
     if (!editing) {
       setAnnounce(true)
       setAnnounceText('')
@@ -229,32 +242,39 @@ function ChallengeFormModal({
       push({ tone: 'error', title: 'Title is required' })
       return
     }
+    // Flow validation for functional challenges in flow mode
+    let ruleFlow: RuleFlow | null = null
+    let effPoints = points
+    let effBonus = Math.max(0, bonus)
+    if (type === 'functional' && ruleMode === 'flow') {
+      const err = validateFlow(flow)
+      if (err) { push({ tone: 'error', title: err }); return }
+      ruleFlow = flow
+      const rewardNode = flow!.nodes.find((n) => n.kind === 'reward')
+      if (rewardNode) {
+        effPoints = rewardNode.points ?? effPoints
+        effBonus = Math.max(0, rewardNode.bonus ?? effBonus)
+      }
+    }
     setSaving(true)
     try {
+      const shared = {
+        title: title.trim(),
+        description: description.trim(),
+        type,
+        functional_type: type === 'functional' ? functionalType : 'lead_created',
+        target_count: Math.max(1, targetCount),
+        points: effPoints,
+        financial_bonus: effBonus,
+        scope,
+        bonus_split: scope === 'team' ? bonusSplit : 'full',
+        rule_flow: type === 'functional' ? ruleFlow : null,
+      }
       if (editing) {
-        await db.updateChallenge(editing.id, {
-          title: title.trim(),
-          description: description.trim(),
-          type,
-          functional_type: type === 'functional' ? functionalType : 'lead_created',
-          target_count: Math.max(1, targetCount),
-          points,
-          financial_bonus: Math.max(0, bonus),
-          scope,
-        })
+        await db.updateChallenge(editing.id, shared)
         push({ tone: 'success', title: 'Challenge updated' })
       } else {
-        await db.createChallenge({
-          title: title.trim(),
-          description: description.trim(),
-          type,
-          functional_type: functionalType,
-          target_count: Math.max(1, targetCount),
-          points,
-          financial_bonus: Math.max(0, bonus),
-          scope,
-          created_by: adminId,
-        })
+        await db.createChallenge({ ...shared, created_by: adminId })
 
         // Announcement → inbox for every active member. The inbox insert
         // triggers the send-push Edge Function; the user_challenge_new
@@ -264,7 +284,11 @@ function ChallengeFormModal({
           try {
             const profiles = await db.listProfiles()
             const recipients = profiles.filter((p) => p.role !== 'admin' && p.active)
-            const reward = bonus > 0 ? ` Rewards: +${points} pts and ${eur(bonus)} on completion.` : ` Reward: +${points} pts.`
+            const reward = effBonus > 0
+              ? scope === 'team'
+                ? ` Team pool: ${eur(effBonus)} — ${BONUS_SPLIT_META[bonusSplit].label.toLowerCase()} between active members (${effPoints} pts each).`
+                : ` Rewards: +${effPoints} pts and ${eur(effBonus)} on completion.`
+              : ` Reward: +${effPoints} pts.`
             await db.announceChallenge(
               recipients.map((r) => r.id),
               adminId,
@@ -334,36 +358,90 @@ function ChallengeFormModal({
 
         {type === 'functional' && (
           <Field label="Platform action to check" hint={FUNCTIONAL_CHALLENGE_META[functionalType].hint}>
-            <select
+            <SegmentedControl
               value={functionalType}
-              onChange={(e) => setFunctionalType(e.target.value as FunctionalChallengeType)}
-              className="w-full cursor-pointer appearance-none rounded-lg border border-line bg-surface px-3 py-2 text-sm"
-            >
-              {Object.entries(FUNCTIONAL_CHALLENGE_META).map(([k, m]) => (
-                <option key={k} value={k}>{m.label}</option>
-              ))}
-            </select>
+              onChange={(v) => setFunctionalType(v as FunctionalChallengeType)}
+              options={[
+                { value: 'lead_created', label: FUNCTIONAL_CHALLENGE_META.lead_created.label },
+                { value: 'deal_submitted', label: FUNCTIONAL_CHALLENGE_META.deal_submitted.label },
+              ]}
+              columns={2}
+              size="sm"
+            />
           </Field>
         )}
 
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Target count" hint="Actions needed">
-            <Input type="number" min={1} value={targetCount} onChange={(e) => setTargetCount(Number(e.target.value))} />
+        {type === 'functional' && (
+          <Field
+            label="Rule mode"
+            hint={ruleMode === 'flow'
+              ? 'Chain goals & conditions visually — e.g. "10 leads, of which ≥1 deal, earns the reward".'
+              : 'One metric, one target — quick and simple.'}
+          >
+            <SegmentedControl
+              value={ruleMode}
+              onChange={(v) => {
+                setRuleMode(v as 'simple' | 'flow')
+                if (v === 'flow' && !flow) setFlow(emptyFlow())
+              }}
+              options={[
+                { value: 'simple', label: 'Simple' },
+                { value: 'flow', label: 'Flow builder' },
+              ]}
+              columns={2}
+              size="sm"
+            />
           </Field>
-          <Field label="Points" hint="XP reward">
-            <Input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
+        )}
+
+        {type === 'functional' && ruleMode === 'flow' && (
+          <FlowCreator value={flow} onChange={setFlow} />
+        )}
+
+        {!(type === 'functional' && ruleMode === 'flow') && (
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Target count" hint="Actions needed">
+              <Input type="number" min={1} value={targetCount} onChange={(e) => setTargetCount(Number(e.target.value))} />
+            </Field>
+            <Field label="Points" hint="XP reward">
+              <Input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
+            </Field>
+            <Field label="Bonus €" hint={bonus > 0 ? 'Paid to payouts' : '0 hides bonus'}>
+              <Input type="number" min={0} step="0.01" value={bonus} onChange={(e) => setBonus(Number(e.target.value))} />
+            </Field>
+          </div>
+        )}
+
+        {scope === 'team' && (
+          <Field label="Team bonus split" hint={BONUS_SPLIT_META[bonusSplit].hint}>
+            <SegmentedControl
+              value={bonusSplit}
+              onChange={(v) => setBonusSplit(v as 'full' | 'equal' | 'contribution')}
+              options={[
+                { value: 'full', label: 'Full ×N' },
+                { value: 'equal', label: 'Equal split' },
+                { value: 'contribution', label: 'By results' },
+              ]}
+              columns={3}
+              size="sm"
+            />
           </Field>
-          <Field label="Bonus €" hint={bonus > 0 ? 'Paid to payouts' : '0 hides bonus'}>
-            <Input type="number" min={0} step="0.01" value={bonus} onChange={(e) => setBonus(Number(e.target.value))} />
-          </Field>
-        </div>
+        )}
 
         <p className="rounded-xl border border-line bg-ink-50/60 px-3 py-2.5 text-2xs leading-relaxed text-ink-400 dark:bg-transparent">
-          {bonus > 0
-            ? scope === 'team'
-              ? `On completion, ${eur(bonus)} is queued into EVERY active member's payouts as a pending "bonus" payout.`
+          {type === 'functional' && ruleMode === 'flow' && flow ? (
+            (() => {
+              const rewardNode = flow.nodes.find((n) => n.kind === 'reward')
+              const rb = rewardNode?.bonus ?? 0
+              return rb > 0
+                ? `On completion, the ${eur(rb)} ${scope === 'team' ? `pool is ${BONUS_SPLIT_META[scope === 'team' ? bonusSplit : 'full'].label.toLowerCase()} between active members'` : "is queued into the member's"} payouts as pending "bonus".`
+                : 'Add a bonus to the Reward node to pay cash on completion.'
+            })()
+          ) : bonus > 0 ? (
+            scope === 'team'
+              ? `On completion, the ${eur(bonus)} ${BONUS_SPLIT_META[bonusSplit].label.toLowerCase()} between active members' payouts as pending "bonus".`
               : `On completion, ${eur(bonus)} is queued into the member's payouts automatically as a pending "bonus" payout.`
-            : 'Financial bonus is off — only points will be shown as a reward.'}
+          ) : 'Financial bonus is off — only points will be shown as a reward.'}
         </p>
 
         {!editing && (

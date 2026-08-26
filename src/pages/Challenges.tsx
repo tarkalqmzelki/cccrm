@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Check, Coins, Plus, Sparkles, Swords, UsersRound, Zap, PartyPopper } from 'lucide-react'
+import { Check, Coins, Plus, Sparkles, Swords, UsersRound, Zap, PartyPopper, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
+import { evaluateRuleFlow } from '../lib/gamification'
 import { PageContainer } from '../components/layout/AppShell'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
@@ -14,7 +15,7 @@ import { MotionBorder } from '../components/ui/MotionBorder'
 import { useToast } from '../context/ToastContext'
 import { FUNCTIONAL_CHALLENGE_META } from '../lib/types'
 import type { Challenge, Company, Deal } from '../lib/types'
-import { eur } from '../lib/format'
+import { eur, eurFull } from '../lib/format'
 
 /**
  * Member-facing quest board. Functional challenges are auto-checked
@@ -63,6 +64,8 @@ export default function Challenges() {
   }
 
   const progressOf = (c: Challenge): number => {
+    const fe = flowEvalOf(c)
+    if (fe) return Math.round(fe.pct)
     const team = c.scope === 'team'
     const raw =
       c.type === 'functional'
@@ -71,10 +74,26 @@ export default function Challenges() {
     return Math.min(raw, c.target_count)
   }
 
+  /** For flow challenges progress runs 0–100 against the node graph. */
+  const targetOf = (c: Challenge): number => (flowEvalOf(c) ? 100 : c.target_count)
+
+  /** Live evaluation of an authored rule graph (functional + rule_flow). */
+  const flowEvalOf = (c: Challenge) => {
+    if (c.type !== 'functional' || !c.rule_flow) return null
+    const team = c.scope === 'team'
+    const since = new Date(c.created_at).getTime()
+    return evaluateRuleFlow(c.rule_flow, {
+      lead_created: platformActionsSince(since, 'lead_created', team),
+      deal_submitted: platformActionsSince(since, 'deal_submitted', team),
+    })
+  }
+
   const myRowFor = (c: Challenge) =>
     (progressQ.data || []).find((r) => r.challenge_id === c.id && r.user_id === user?.id)
 
   const isCompleted = (c: Challenge): boolean => {
+    const fe = flowEvalOf(c)
+    if (fe) return fe.completed
     if (progressOf(c) >= c.target_count) return true
     if (c.scope === 'team') {
       // Any stamped completion counts as claimed for the whole team.
@@ -84,6 +103,55 @@ export default function Challenges() {
   }
 
   /* ---- completion claim: stamp + payouts + inbox/push recap ---- */
+
+  /* ---- bonus math: per-member amounts for the three split modes ---- */
+
+  const r2 = (n: number) => Math.round(n * 100) / 100
+
+  /** Primary metric driving contributions (flow goal > functional type). */
+  function primaryMetric(c: Challenge): 'lead_created' | 'deal_submitted' {
+    const goal = c.rule_flow?.nodes.find((n) => n.kind === 'goal')
+    return (goal?.metric ?? c.functional_type ?? 'lead_created') as 'lead_created' | 'deal_submitted'
+  }
+
+  /** Per-member contribution toward the goal metric since challenge start. */
+  function contributionsFor(c: Challenge, memberIds: string[]): Map<string, number> {
+    const map = new Map<string, number>()
+    memberIds.forEach((id) => map.set(id, 0))
+    if (!platformQ.data || !user) return map
+    const since = new Date(c.created_at).getTime()
+    const metric = primaryMetric(c)
+    if (metric === 'lead_created') {
+      for (const x of platformQ.data.companies) {
+        if (new Date(x.created_at).getTime() >= since && memberIds.includes(x.created_by ?? '')) {
+          map.set(x.created_by!, (map.get(x.created_by!) ?? 0) + 1)
+        }
+      }
+    } else {
+      for (const d of platformQ.data.deals) {
+        if (new Date(d.created_at).getTime() >= since && memberIds.includes(d.seller_id)) {
+          map.set(d.seller_id, (map.get(d.seller_id) ?? 0) + 1)
+        }
+      }
+    }
+    return map
+  }
+
+  /** Distribute the pool: last member absorbs the cent remainder so the
+   *  sum always equals the bonus exactly. */
+  function splitPool(total: number, weights: { id: string; w: number }[]): { id: string; amount: number }[] {
+    const totalW = weights.reduce((s, x) => s + x.w, 0)
+    const out: { id: string; amount: number }[] = []
+    let paid = 0
+    weights.forEach((x, i) => {
+      const amount = i === weights.length - 1
+        ? r2(total - paid)
+        : r2(totalW > 0 ? (x.w / totalW) * total : total / weights.length)
+      paid = r2(paid + amount)
+      out.push({ id: x.id, amount })
+    })
+    return out
+  }
 
   async function claimCompletion(c: Challenge) {
     if (!user || claimLock.current.has(c.id)) return
@@ -97,20 +165,39 @@ export default function Challenges() {
       if (!alreadyStamped) await supabaseStampCompletion(c.id, user.id)
 
       if (c.financial_bonus > 0) {
-        let recipients: string[]
+        let amounts: { id: string; amount: number }[] = []
         if (c.scope === 'team') {
           const profiles = await db.listProfiles()
-          recipients = profiles.filter((p) => p.role !== 'admin' && p.active).map((p) => p.id)
+          const recipients = profiles.filter((p) => p.role !== 'admin' && p.active).map((p) => p.id)
           if (!recipients.includes(user.id)) recipients.push(user.id)
+
+          const split = c.bonus_split ?? 'full'
+          if (split === 'full') {
+            amounts = recipients.map((rid) => ({ id: rid, amount: c.financial_bonus }))
+          } else if (split === 'equal') {
+            amounts = splitPool(c.financial_bonus, recipients.map((rid) => ({ id: rid, w: 1 })))
+          } else {
+            // By results — weight = each member's contribution to the goal metric
+            const contrib = contributionsFor(c, recipients)
+            const weights = recipients.map((rid) => ({ id: rid, w: contrib.get(rid) ?? 0 }))
+            const totalW = weights.reduce((s, x) => s + x.w, 0)
+            amounts = totalW > 0
+              ? splitPool(c.financial_bonus, weights)
+              : splitPool(c.financial_bonus, recipients.map((rid) => ({ id: rid, w: 1 }))) // zero-activity fallback: equal
+          }
         } else {
-          recipients = [user.id]
+          amounts = [{ id: user.id, amount: c.financial_bonus }]
         }
         if (!myRow?.bonus_paid) {
-          for (const rid of recipients) {
-            await db.createChallengeBonusPayout(rid, c.financial_bonus)
+          for (const a of amounts) {
+            if (a.amount > 0) await db.createChallengeBonusPayout(a.id, a.amount)
           }
           if (myRow) await db.markChallengeBonusPaid(c.id, user.id)
-          push({ tone: 'success', title: `${eur(c.financial_bonus)} bonus queued`, desc: c.scope === 'team' ? 'Every active member\'s payouts just got the team bonus.' : 'It\'s waiting in your payouts as a pending bonus.' })
+          const mine = amounts.find((a) => a.id === user.id)?.amount ?? 0
+          const splitLabel = c.scope === 'team'
+            ? c.bonus_split === 'contribution' ? 'Split by results' : c.bonus_split === 'equal' ? 'Split equally' : 'Full bonus for everyone'
+            : 'Pending bonus'
+          push({ tone: 'success', title: c.scope === 'team' ? `${splitLabel} — ${eur(c.financial_bonus)} pool queued` : `${eur(c.financial_bonus)} bonus queued`, desc: c.scope === 'team' ? `Your share: ${eurFull(mine)}. Check your payouts.` : 'It\'s waiting in your payouts as a pending bonus.' })
         }
       } else {
         push({ tone: 'success', title: `Challenge completed — ${c.title}` })
@@ -122,7 +209,7 @@ export default function Challenges() {
           user.id,
           `Completed: ${c.title}`,
           c.scope === 'team'
-            ? `The team conquered "${c.title}".${c.financial_bonus > 0 ? ` ${eur(c.financial_bonus)} bonus is on its way to every member's payouts.` : ''} Keep the streak alive!`
+            ? `The team conquered "${c.title}".${c.financial_bonus > 0 ? ` The ${eur(c.financial_bonus)} bonus pool (${(c.bonus_split ?? 'full') === 'contribution' ? 'split by results' : (c.bonus_split ?? 'full') === 'equal' ? 'split equally' : 'full for everyone'}) is on its way to the members' payouts.` : ''} Keep the streak alive!`
             : `You conquered "${c.title}" and earned ${c.points} points.${c.financial_bonus > 0 ? ` Your ${eur(c.financial_bonus)} bonus is queued in payouts.` : ''}`,
         )
       } catch { /* best-effort */ }
@@ -139,7 +226,7 @@ export default function Challenges() {
     if (!user || loading) return
     for (const c of active) {
       if (c.type !== 'functional') continue
-      if (progressOf(c) >= c.target_count && !isCompleted(c)) {
+      if (progressOf(c) >= targetOf(c) && !isCompleted(c)) {
         void claimCompletion(c)
       }
     }
@@ -179,6 +266,14 @@ export default function Challenges() {
 
       {loading ? (
         <div className="grid gap-4 lg:grid-cols-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-2xl" />)}</div>
+      ) : challengesQ.error ? (
+        <Card>
+          <div className="flex flex-col items-center gap-2 py-12 text-center">
+            <AlertTriangle size={22} strokeWidth={1.75} className="text-neg" />
+            <p className="text-sm font-semibold">Couldn't load challenges</p>
+            <p className="max-w-sm text-2xs text-ink-400">{challengesQ.error} — check that schema59–65 have been run in Supabase, then reopen this page.</p>
+          </div>
+        </Card>
       ) : active.length === 0 && conquered.length === 0 ? (
         <Card>
           <div className="flex flex-col items-center gap-2 py-14 text-center">
@@ -206,7 +301,7 @@ export default function Challenges() {
                 </p>
                 <div className="grid gap-4 opacity-80 lg:grid-cols-2">
                   {doneActive.map((c, i) => (
-                    <ChallengeCard key={c.id} c={c} index={i} progress={c.target_count} justDone={justDone.has(c.id)} onBump={undefined} />
+                    <ChallengeCard key={c.id} c={c} index={i} progress={targetOf(c)} justDone={justDone.has(c.id)} onBump={undefined} />
                   ))}
                 </div>
               </motion.div>
@@ -218,7 +313,7 @@ export default function Challenges() {
               <p className="mb-3 text-2xs font-bold uppercase tracking-wider text-ink-300">Past challenges</p>
               <div className="grid gap-4 opacity-50 lg:grid-cols-2">
                 {conquered.slice(0, 4).map((c, i) => (
-                  <ChallengeCard key={c.id} c={c} index={i} progress={Math.min(progressOf(c), c.target_count)} justDone={false} onBump={undefined} />
+                  <ChallengeCard key={c.id} c={c} index={i} progress={Math.min(progressOf(c), targetOf(c))} justDone={false} onBump={undefined} />
                 ))}
               </div>
             </div>
@@ -239,13 +334,17 @@ export default function Challenges() {
   }) {
     const accent = c.type === 'functional' ? '#3b82f6' : '#a855f7'
     const isTeam = c.scope === 'team'
-    const pct = Math.min(100, (progress / c.target_count) * 100)
-    const complete = progress >= c.target_count
+    const fe = flowEvalOf(c)
+    const target = fe ? 100 : c.target_count
+    const pct = fe ? fe.pct : Math.min(100, (progress / c.target_count) * 100)
+    const complete = fe ? fe.completed : progress >= c.target_count
+    const rewardPoints = fe ? fe.reward.points || c.points : c.points
+    const rewardBonus = fe ? fe.reward.bonus : c.financial_bonus
 
     return (
       <motion.div
         initial={{ opacity: 0, y: 16 }}
-        animate={celebrate ? { scale: [1, 1.03, 1] } : { scale: 1 }}
+        animate={celebrate ? { opacity: 1, y: 0, scale: [1, 1.03, 1] } : { opacity: 1, y: 0, scale: 1 }}
         transition={
           celebrate
             ? { duration: 0.5, times: [0, 0.4, 1] }
@@ -304,15 +403,18 @@ export default function Challenges() {
           {/* Rewards */}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <span className="inline-flex items-center gap-1 rounded-full border border-warn/25 bg-warnBg px-2.5 py-1 text-2xs font-bold text-warn">
-              <Sparkles size={11} strokeWidth={2} /> +{c.points} pts{isTeam ? ' each' : ''}
+              <Sparkles size={11} strokeWidth={2} /> +{rewardPoints} pts{isTeam ? ' each' : ''}
             </span>
-            {c.financial_bonus > 0 && (
+            {rewardBonus != null && rewardBonus > 0 && (
               <motion.span
                 animate={complete ? undefined : { filter: ['drop-shadow(0 0 0px rgba(34,197,94,0))', 'drop-shadow(0 0 5px rgba(34,197,94,0.45))', 'drop-shadow(0 0 0px rgba(34,197,94,0))'] }}
                 transition={{ duration: 2.4, repeat: Infinity }}
                 className="inline-flex items-center gap-1 rounded-full border border-pos/30 bg-posBg px-2.5 py-1 text-2xs font-bold text-pos"
               >
-                <Coins size={11} strokeWidth={2} /> {eur(c.financial_bonus)} bonus{isTeam ? ' → everyone' : ' → your payout'}
+                <Coins size={11} strokeWidth={2} />
+                {isTeam
+                  ? `${eur(rewardBonus)} pool · ${(c.bonus_split ?? 'full') === 'contribution' ? 'split by results' : (c.bonus_split ?? 'full') === 'equal' ? 'split equally' : 'full × everyone'}`
+                  : `${eur(rewardBonus)} bonus → your payout`}
               </motion.span>
             )}
           </div>
@@ -323,13 +425,17 @@ export default function Challenges() {
               <span className="font-semibold uppercase tracking-wide text-ink-400">
                 {complete
                   ? 'Completed'
-                  : c.type === 'functional'
-                    ? 'Auto-checked by the platform'
-                    : isTeam
-                      ? 'Pooled by the whole team'
-                      : 'Self-reported'}
+                  : fe
+                    ? 'Rule flow · auto-checked'
+                    : c.type === 'functional'
+                      ? 'Auto-checked by the platform'
+                      : isTeam
+                        ? 'Pooled by the whole team'
+                        : 'Self-reported'}
               </span>
-              <span className="num font-bold text-ink-500 dark:text-ink-300">{progress}/{c.target_count}</span>
+              <span className="num font-bold text-ink-500 dark:text-ink-300">
+                {fe ? `${Math.round(pct)}%` : `${progress}/${c.target_count}`}
+              </span>
             </div>
             <div className="relative h-2.5 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-200">
               <motion.div
@@ -347,6 +453,23 @@ export default function Challenges() {
                 }`}
               />
             </div>
+
+            {/* Rule-flow goal chips — live per-node status */}
+            {fe && fe.goals.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {fe.goals.map((g) => (
+                  <span
+                    key={g.label}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-bold num ${
+                      g.ok ? 'border-pos/30 bg-posBg text-pos' : 'border-line bg-ink-50 text-ink-500 dark:bg-transparent dark:text-ink-300'
+                    }`}
+                  >
+                    {g.ok && <Check size={10} strokeWidth={3} />}
+                    {g.label} {g.cur}/{g.need}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Action */}
@@ -355,9 +478,14 @@ export default function Challenges() {
               {isTeam ? 'Add to the pool (+1)' : 'Log progress (+1)'}
             </Button>
           )}
-          {c.type === 'functional' && !complete && (
+          {c.type === 'functional' && !complete && !fe && (
             <p className="mt-3 flex items-center gap-1 text-2xs text-ink-300">
               <Zap size={10} strokeWidth={2} /> The moment {isTeam ? 'the company hits' : 'you hit'} {c.target_count}, this clears itself.
+            </p>
+          )}
+          {fe && !complete && (
+            <p className="mt-3 flex items-center gap-1 text-2xs text-ink-300">
+              <Zap size={10} strokeWidth={2} /> Every node in the flow must turn green.
             </p>
           )}
           </div>

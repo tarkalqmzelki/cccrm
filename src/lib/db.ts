@@ -14,6 +14,7 @@ import type {
   Challenge, ChallengeProgress, ChallengeType, FunctionalChallengeType,
   MarketLead,
   BankCard, BankTransaction, BankTxKind,
+  RuleFlow,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
 import type { LanguageTranslations } from './translations'
@@ -30,7 +31,11 @@ export const db = {
     const { data, error } = await supabase!
       .from('challenges').select('*')
       .order('created_at', { ascending: false })
-    if (error) return []
+    if (error) {
+      // Surface silently-swallowed DB problems (missing schema / RLS).
+      console.error('[db.listChallenges]', error.message)
+      return []
+    }
     return (data || []) as Challenge[]
   },
 
@@ -43,6 +48,8 @@ export const db = {
     points?: number
     financial_bonus?: number
     scope?: 'solo' | 'team'
+    bonus_split?: 'full' | 'equal' | 'contribution'
+    rule_flow?: RuleFlow | null
     created_by?: string | null
   }): Promise<void> {
     const { error } = await supabase!.from('challenges').insert({
@@ -55,13 +62,15 @@ export const db = {
       financial_bonus: c.financial_bonus ?? 0,
       status: 'active',
       scope: c.scope || 'solo',
+      bonus_split: c.bonus_split || 'full',
+      rule_flow: c.rule_flow ?? null,
       created_by: c.created_by ?? null,
     })
     if (error) throw error
   },
 
   async updateChallenge(id: string, patch: Partial<Challenge>): Promise<void> {
-    const allowed = ['title', 'description', 'type', 'functional_type', 'target_count', 'points', 'financial_bonus', 'status', 'scope']
+    const allowed = ['title', 'description', 'type', 'functional_type', 'target_count', 'points', 'financial_bonus', 'status', 'scope', 'rule_flow', 'bonus_split']
     const payload: Record<string, unknown> = { updated_at: iso() }
     for (const k of allowed) if (k in patch) payload[k] = (patch as Record<string, unknown>)[k]
     const { error } = await supabase!.from('challenges').update(payload).eq('id', id)

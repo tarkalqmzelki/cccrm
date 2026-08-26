@@ -478,9 +478,19 @@ export interface Challenge {
   status: 'active' | 'ended'
   /** 'solo' = per-member quest · 'team' = whole company pools progress */
   scope?: 'solo' | 'team'
+  /** Team quests: how the financial bonus is distributed (schema66). */
+  bonus_split?: 'full' | 'equal' | 'contribution'
+  /** Visual rule graph (schema65) — overrides simple functional fields. */
+  rule_flow?: RuleFlow | null
   created_by: string | null
   created_at: string
   updated_at: string
+}
+
+export const BONUS_SPLIT_META: Record<'full' | 'equal' | 'contribution', { label: string; hint: string }> = {
+  full:         { label: 'Full for everyone', hint: 'Each active member receives the whole bonus.' },
+  equal:        { label: 'Equal pool split',  hint: 'The bonus is one pool divided equally between active members.' },
+  contribution: { label: 'Split by results',  hint: 'The pool is divided proportionally to each member’s contribution toward the goal metric (45 of 50 leads ≈ 90% of the pool).' },
 }
 
 export interface ChallengeProgress {
@@ -499,6 +509,38 @@ export const CHALLENGE_TYPE_META: Record<ChallengeType, { label: string; desc: s
 }
 
 export type ChallengeScope = 'solo' | 'team'
+
+/* ---- Visual rule flow (schema65) — n8n-style challenge builder ---- */
+
+export type FlowMetric = 'lead_created' | 'deal_submitted'
+
+export type FlowNodeKind = 'start' | 'goal' | 'condition' | 'reward'
+
+export interface FlowNode {
+  id: string
+  kind: FlowNodeKind
+  x: number
+  y: number
+  /** goal: how many of metric are required */
+  metric?: FlowMetric
+  count?: number
+  /** condition: "of which at least N …" */
+  min?: number
+  /** reward */
+  points?: number
+  bonus?: number
+}
+
+export interface RuleFlow {
+  /** nodes in chain order (start → … → reward) */
+  order: string[]
+  nodes: FlowNode[]
+}
+
+export const FLOW_METRIC_LABEL: Record<FlowMetric, string> = {
+  lead_created: 'Leads',
+  deal_submitted: 'Deals',
+}
 
 /* =====================================================================
  * LEADS MARKETPLACE (schema61) — import pool feeding the Leads page

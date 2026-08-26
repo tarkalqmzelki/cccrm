@@ -1,4 +1,5 @@
-import type { Deal, Level, Payout, Profile, Referral, Settings } from './types'
+import type { Deal, Level, Payout, Profile, Referral, Settings, RuleFlow, FlowNode } from './types'
+import { FLOW_METRIC_LABEL } from './types'
 import { effectiveLevel } from './metrics'
 
 /* =====================================================================
@@ -9,6 +10,55 @@ import { effectiveLevel } from './metrics'
 
 export type Period = 'all' | 'monthly' | 'weekly'
 export type Category = 'revenue' | 'deals' | 'earnings'
+
+/* ------------------------------------------------------------------ */
+/* RULE-FLOW EVALUATION (visual challenge builder)                     */
+/* ------------------------------------------------------------------ */
+
+export interface FlowGoalInfo {
+  label: string
+  cur: number
+  need: number
+  ok: boolean
+}
+
+export interface FlowEval {
+  completed: boolean
+  /** 0–100 average satisfaction across all goal/condition nodes */
+  pct: number
+  goals: FlowGoalInfo[]
+  reward: { points: number; bonus: number }
+}
+
+/** Evaluate an authored rule graph against live platform counters. */
+export function evaluateRuleFlow(
+  flow: RuleFlow,
+  counts: Record<string, number>,
+): FlowEval {
+  const byId = new Map<string, FlowNode>(flow.nodes.map((n) => [n.id, n]))
+  const ordered = flow.order.map((id) => byId.get(id)).filter(Boolean) as FlowNode[]
+  const goals: FlowGoalInfo[] = []
+  let reward = { points: 0, bonus: 0 }
+
+  for (const n of ordered) {
+    if ((n.kind === 'goal' || n.kind === 'condition') && n.metric) {
+      const cur = counts[n.metric] ?? 0
+      const need = Math.max(n.kind === 'goal' ? n.count ?? 1 : n.min ?? 1, 1)
+      const label = n.kind === 'condition'
+        ? `incl. ${FLOW_METRIC_LABEL[n.metric].toLowerCase()}`
+        : FLOW_METRIC_LABEL[n.metric]
+      goals.push({ label, cur, need, ok: cur >= need })
+    }
+    if (n.kind === 'reward') {
+      reward = { points: n.points ?? 0, bonus: n.bonus ?? 0 }
+    }
+  }
+
+  const pct = goals.length > 0
+    ? (goals.reduce((s, g) => s + Math.min(g.cur / g.need, 1), 0) / goals.length) * 100
+    : 0
+  return { completed: goals.length > 0 && goals.every((g) => g.ok), pct, goals, reward }
+}
 
 const DAY = 86400000
 
