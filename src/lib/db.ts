@@ -13,6 +13,7 @@ import type {
   ContractTemplateVariant, DesignSettings,
   Challenge, ChallengeProgress, ChallengeType, FunctionalChallengeType,
   MarketLead,
+  BankCard, BankTransaction, BankTxKind,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
 import type { LanguageTranslations } from './translations'
@@ -417,6 +418,9 @@ export const db = {
       logo_url: c.logo_url || '',
       summary: c.summary || '',
       phone: c.phone || '',
+      country: c.country || '',
+      city: c.city || '',
+      services_offered: c.services_offered || '',
       created_by: c.created_by || null,
     }
     const { data, error } = await supabase!.from('companies').insert(row).select().single()
@@ -1208,6 +1212,86 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     const { error } = await supabase!.from('marketplace_leads')
       .update({ claimed_by: userId, claimed_at: iso(), updated_at: iso() })
       .eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- BANK (schema63) ---------- */
+  async listBankCards(): Promise<BankCard[]> {
+    const { data, error } = await supabase!
+      .from('bank_cards').select('*')
+      .order('created_at', { ascending: false })
+    if (error) return []
+    return (data || []) as BankCard[]
+  },
+
+  async listBankCardsForUser(userId: string): Promise<BankCard[]> {
+    const { data, error } = await supabase!
+      .from('bank_cards').select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+    if (error) return []
+    return (data || []) as BankCard[]
+  },
+
+  async createBankCard(c: Omit<BankCard, 'id' | 'created_by' | 'created_at' | 'updated_at' | 'frozen'> & { frozen?: boolean }, createdBy: string): Promise<void> {
+    const { error } = await supabase!.from('bank_cards').insert({
+      user_id: c.user_id,
+      holder_name: c.holder_name || '',
+      card_number: c.card_number || '',
+      expiry: c.expiry || '',
+      cvv: c.cvv || '',
+      brand: c.brand || 'visa',
+      gradient: c.gradient || 'aurora',
+      initial_balance: c.initial_balance || 0,
+      frozen: c.frozen ?? false,
+      created_by: createdBy,
+    })
+    if (error) throw error
+  },
+
+  async updateBankCard(id: string, patch: Partial<BankCard>): Promise<void> {
+    const allowed = ['user_id', 'holder_name', 'card_number', 'expiry', 'cvv', 'brand', 'gradient', 'initial_balance', 'frozen']
+    const payload: Record<string, unknown> = { updated_at: iso() }
+    for (const k of allowed) if (k in patch) payload[k] = (patch as Record<string, unknown>)[k]
+    const { error } = await supabase!.from('bank_cards').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteBankCard(id: string): Promise<void> {
+    const { error } = await supabase!.from('bank_cards').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  async listBankTransactions(cardIds?: string[]): Promise<BankTransaction[]> {
+    let q = supabase!.from('bank_transactions').select('*').order('occurred_at', { ascending: true })
+    if (cardIds && cardIds.length > 0) q = q.in('card_id', cardIds)
+    const { data, error } = await q
+    if (error) return []
+    return (data || []) as BankTransaction[]
+  },
+
+  async createBankTransaction(t: {
+    card_id: string
+    kind: BankTxKind
+    category: string
+    amount: number
+    note?: string
+    occurred_at?: string
+  }, createdBy: string): Promise<void> {
+    const { error } = await supabase!.from('bank_transactions').insert({
+      card_id: t.card_id,
+      kind: t.kind,
+      category: t.category || 'other',
+      amount: t.amount,
+      note: t.note || '',
+      occurred_at: t.occurred_at || iso(),
+      created_by: createdBy,
+    })
+    if (error) throw error
+  },
+
+  async deleteBankTransaction(id: string): Promise<void> {
+    const { error } = await supabase!.from('bank_transactions').delete().eq('id', id)
     if (error) throw error
   },
 

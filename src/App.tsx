@@ -25,6 +25,7 @@ import InboxPage from './pages/InboxPage'
 import GivenAccess from './pages/GivenAccess'
 import Challenges from './pages/Challenges'
 import MarketplacePage from './pages/MarketplacePage'
+import Bank from './pages/Bank'
 /* The world-map bundle (topojson + d3-geo) is heavy — load it on demand. */
 const MapPage = lazy(() => import('./pages/MapPage'))
 import type { Role } from './lib/types'
@@ -65,6 +66,7 @@ function Shell() {
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/challenges" element={<Challenges />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/bank" element={<Bank />} />
         <Route path="/map" element={<Suspense fallback={<FullLoader />}><MapPage /></Suspense>} />
         <Route path="/referrals" element={<Referrals />} />
         <Route path="/payouts" element={<Payouts />} />

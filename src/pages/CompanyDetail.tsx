@@ -610,13 +610,18 @@ function EditCompanyModal({ open, onClose, company, onSaved }: { open: boolean; 
   const [address, setAddress] = useState(company.address)
   const [logoUrl, setLogoUrl] = useState(company.logo_url)
   const [vatNumber, setVatNumber] = useState(company.vat_number)
+  const [country, setCountry] = useState((company as { country?: string }).country ?? '')
+  const [city, setCity] = useState((company as { city?: string }).city ?? '')
+  const [services, setServices] = useState((company as { services_offered?: string }).services_offered ?? '')
   const [saving, setSaving] = useState(false)
 
   async function save() {
     if (!name.trim()) { push({ tone: 'error', title: 'Name is required' }); return }
+    if (!country.trim()) { push({ tone: 'error', title: 'Country is required' }); return }
+    if (!city.trim()) { push({ tone: 'error', title: 'City is required' }); return }
     setSaving(true)
     try {
-      await db.updateCompany(company.id, { name, website, industry, address, logo_url: logoUrl, vat_number: vatNumber })
+      await db.updateCompany(company.id, { name, website, industry, address, logo_url: logoUrl, vat_number: vatNumber, country: country.trim(), city: city.trim(), services_offered: services.trim() })
       push({ tone: 'success', title: 'Company updated' })
       onSaved()
     } catch (e: any) {
@@ -631,10 +636,15 @@ function EditCompanyModal({ open, onClose, company, onSaved }: { open: boolean; 
       <div className="space-y-4">
         <Field label="Company name" required><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-4">
+          <Field label="Country" required hint="Powers the world map"><Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Italy" /></Field>
+          <Field label="City" required><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Milan" /></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <Field label="Website"><Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="company.com" /></Field>
           <Field label="VAT number"><Input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} /></Field>
         </div>
         <Field label="Industry"><Input value={industry} onChange={(e) => setIndustry(e.target.value)} /></Field>
+        <Field label="Services offered" required hint="Comma-separated"><Input value={services} onChange={(e) => setServices(e.target.value)} placeholder="Web design, Branding, SEO" /></Field>
         <Field label="Address"><Input value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
         <Field label="Logo URL" hint="Optional"><Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…" /></Field>
       </div>

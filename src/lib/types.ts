@@ -50,6 +50,11 @@ export interface Company {
   summary: string
   /** Direct contact line (schema61 — populated from marketplace claims). */
   phone?: string
+  /** Structured geography (schema64) — powers the world map. */
+  country?: string
+  city?: string
+  /** Comma-separated services the lead is interested in (schema64). */
+  services_offered?: string
   created_by: string | null
   lead_status: LeadStatus
   lead_status_updated_at: string | null
@@ -533,6 +538,102 @@ export function marketLeadState(m: Pick<MarketLead, 'published' | 'unlock_at' | 
   if (m.unlock_at && new Date(m.unlock_at).getTime() > now) return 'locked'
   if (m.allocated_to) return 'allocated'
   return 'live'
+}
+
+/* =====================================================================
+ * BANK (schema63) — admin-issued virtual cards + manual ledger
+ * ===================================================================== */
+
+export interface BankCard {
+  id: string
+  user_id: string
+  holder_name: string
+  card_number: string
+  expiry: string
+  cvv: string
+  brand: string
+  gradient: string
+  initial_balance: number
+  frozen: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type BankTxKind = 'topup' | 'spend'
+
+export interface BankTransaction {
+  id: string
+  card_id: string
+  kind: BankTxKind
+  category: string
+  amount: number
+  note: string
+  occurred_at: string
+  created_by: string | null
+  created_at: string
+}
+
+/** Spend categories (power the Daily Spent panel). */
+export const BANK_SPEND_CATEGORIES = [
+  'salary', 'ads', 'software', 'food', 'travel', 'supplies', 'games', 'other',
+] as const
+export type BankSpendCategory = (typeof BANK_SPEND_CATEGORIES)[number]
+
+export const BANK_SPEND_CATEGORY_META: Record<BankSpendCategory, { label: string }> = {
+  salary:   { label: 'Salary' },
+  ads:      { label: 'Ads' },
+  software: { label: 'Software' },
+  food:     { label: 'Food' },
+  travel:   { label: 'Travel' },
+  supplies: { label: 'Supplies' },
+  games:    { label: 'Online games' },
+  other:    { label: 'Other' },
+}
+
+/** Top-up categories. */
+export const BANK_TOPUP_CATEGORIES = ['payout', 'bonus', 'correction', 'other'] as const
+export type BankTopupCategory = (typeof BANK_TOPUP_CATEGORIES)[number]
+
+export const BANK_TOPUP_CATEGORY_META: Record<BankTopupCategory, { label: string }> = {
+  payout:     { label: 'Payout' },
+  bonus:      { label: 'Bonus' },
+  correction: { label: 'Correction' },
+  other:      { label: 'Other' },
+}
+
+/** Card visual themes — gradient pairs tuned to the platform gamma. */
+export const CARD_GRADIENTS: Record<string, { name: string; from: string; to: string }> = {
+  aurora:   { name: 'Aurora',   from: '#f59e0b', to: '#78350f' },
+  ocean:    { name: 'Ocean',    from: '#38bdf8', to: '#1e3a8a' },
+  sunset:   { name: 'Sunset',   from: '#fb7185', to: '#7c2d12' },
+  emerald:  { name: 'Emerald',  from: '#34d399', to: '#064e3b' },
+  midnight: { name: 'Midnight', from: '#64748b', to: '#020617' },
+}
+
+export function cardGradient(key: string) {
+  return CARD_GRADIENTS[key] ?? CARD_GRADIENTS.aurora
+}
+
+/** Balance of a card given its ledger. */
+export function bankCardBalance(card: Pick<BankCard, 'initial_balance'>, txs: BankTransaction[]): number {
+  return txs.reduce(
+    (bal, t) => (t.kind === 'topup' ? bal + t.amount : bal - t.amount),
+    card.initial_balance || 0,
+  )
+}
+
+/** Masked number for display: keep last 4. */
+export function maskCardNumber(num: string): string {
+  const digits = (num || '').replace(/\s+/g, '')
+  if (digits.length <= 4) return `•••• ${digits}`
+  return `•••• •••• •••• ${digits.slice(-4)}`
+}
+
+/** Full number, grouped in 4s for online checkouts. */
+export function formatCardNumber(num: string): string {
+  const digits = (num || '').replace(/\D/g, '')
+  return digits.replace(/(.{4})/g, '$1 ').trim() || '—'
 }
 
 export interface Settings {

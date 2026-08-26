@@ -33,6 +33,9 @@ export function CreateOppModal({
   const [companyVat, setCompanyVat] = useState('')
   const [companyIndustry, setCompanyIndustry] = useState('')
   const [companyLogo, setCompanyLogo] = useState('')
+  const [companyCountry, setCompanyCountry] = useState('')
+  const [companyCity, setCompanyCity] = useState('')
+  const [companyServices, setCompanyServices] = useState('')
   const [summary, setSummary] = useState('')
 
   // Contact fields (for new lead)
@@ -58,6 +61,7 @@ export function CreateOppModal({
   useEffect(() => {
     if (open) {
       setCompanyName(''); setCompanyWebsite(''); setCompanyVat(''); setCompanyIndustry(''); setCompanyLogo('')
+      setCompanyCountry(''); setCompanyCity(''); setCompanyServices('')
       setSummary(''); setContactName(''); setContactEmail(''); setContactPhone(''); setContactRole('')
       setTitle(''); setOfferValue('0'); setOfferDescription(''); setNotes('')
       setServiceId(''); setCustomService('')
@@ -74,12 +78,19 @@ export function CreateOppModal({
   // Create a new lead: company + summary + contact
   async function createNewLead() {
     if (!companyName.trim()) { push({ tone: 'error', title: 'Company name required' }); return }
+    if (!companyCountry.trim()) { push({ tone: 'error', title: 'Country required', desc: 'It powers the world map.' }); return }
+    if (!companyCity.trim()) { push({ tone: 'error', title: 'City required', desc: 'It powers the world map.' }); return }
+    if (!companyServices.trim()) { push({ tone: 'error', title: 'Services offered required', desc: 'Comma-separate the services.' }); return }
     if (!summary.trim()) { push({ tone: 'error', title: 'Summary required', desc: 'Please describe what happened during the call.' }); return }
     if (!user) return
     setSaving(true)
     try {
       const domain = (companyWebsite || '').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
-      const c = await db.createCompany({ name: companyName, website: companyWebsite, domain, vat_number: companyVat, industry: companyIndustry, logo_url: companyLogo, summary, created_by: user.id })
+      const c = await db.createCompany({
+        name: companyName, website: companyWebsite, domain, vat_number: companyVat, industry: companyIndustry,
+        logo_url: companyLogo, summary, created_by: user.id,
+        country: companyCountry.trim(), city: companyCity.trim(), services_offered: companyServices.trim(),
+      })
 
       // Create contact if any field is filled
       if (contactName.trim() || contactEmail.trim() || contactPhone.trim()) {
@@ -133,7 +144,7 @@ export function CreateOppModal({
   const duplicateService = selectedService ? existingOpps.find((o) => o.service_id === serviceId) : null
 
   const canSave = mode === 'new_lead'
-    ? companyName.trim() && summary.trim()
+    ? companyName.trim() && companyCountry.trim() && companyCity.trim() && companyServices.trim() && summary.trim()
     : serviceId && (!isOtherService || customService.trim())
 
   return (
@@ -166,6 +177,13 @@ export function CreateOppModal({
             <Field label="Industry"><Input value={companyIndustry} onChange={(e) => setCompanyIndustry(e.target.value)} placeholder="Technology" /></Field>
             <Field label="Logo URL" hint="Optional"><Input value={companyLogo} onChange={(e) => setCompanyLogo(e.target.value)} placeholder="https://…" /></Field>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Country" required hint="Powers the world map"><Input value={companyCountry} onChange={(e) => setCompanyCountry(e.target.value)} placeholder="Italy" /></Field>
+            <Field label="City" required hint="Powers the world map"><Input value={companyCity} onChange={(e) => setCompanyCity(e.target.value)} placeholder="Milan" /></Field>
+          </div>
+          <Field label="Services offered" required hint="Comma-separated — shown on the lead and the map.">
+            <Input value={companyServices} onChange={(e) => setCompanyServices(e.target.value)} placeholder="Web design, Branding, SEO" />
+          </Field>
 
           <Field label="Cold Call Summary" required hint="Describe what happened during the call. This will be public.">
             <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} placeholder="Spoke with the receptionist, they showed interest in our website services…" />

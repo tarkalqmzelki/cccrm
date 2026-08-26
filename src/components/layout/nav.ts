@@ -1,4 +1,4 @@
-import { LayoutDashboard, Briefcase, Trophy, Network, Wallet, UsersRound, Settings, UserPlus, Building2, Inbox, Coins, KanbanSquare, Calendar, Swords, Globe2, Store } from 'lucide-react'
+import { LayoutDashboard, Briefcase, Trophy, Network, Wallet, UsersRound, Settings, UserPlus, Building2, Inbox, Coins, KanbanSquare, Calendar, Swords, Globe2, Store, Landmark } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { Role } from '../../lib/types'
 
@@ -28,6 +28,8 @@ export const NAV: NavItem[] = [
   { to: '/challenges', label: 'Challenges', labelKey: 'nav.challenges', icon: Swords },
   { to: '/referrals', label: 'Referrals', labelKey: 'nav.referrals', icon: Network },
   { to: '/payouts', label: 'Payouts', labelKey: 'nav.payouts', icon: Wallet },
+  /* Bank is member-only — admins manage cards from Settings ▸ Bank Cards */
+  { to: '/bank', label: 'Bank', labelKey: 'nav.bank', icon: Landmark, roles: ['seller', 'headhunter'] },
   { to: '/map', label: 'Map', labelKey: 'nav.map', icon: Globe2, roles: ['seller', 'headhunter'] },
   { to: '/finances', label: 'Finances', labelKey: 'nav.finances', icon: Coins, roles: ['admin'] },
   { to: '/sellers', label: 'Sellers', labelKey: 'nav.sellers', icon: UsersRound, roles: ['admin'] },

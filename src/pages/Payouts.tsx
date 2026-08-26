@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Wallet, Download, Info, Network } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Check, Wallet, Download, Info, Network, Clock, Scale, BadgeEuro } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useAsync } from '../lib/hooks/useAsync'
 import { db } from '../lib/db'
@@ -12,6 +13,7 @@ import { Table, useSort, type Column } from '../components/ui/Table'
 import { PageContainer } from '../components/layout/AppShell'
 import { useToast } from '../context/ToastContext'
 import { Modal } from '../components/ui/Modal'
+import { useCountUp } from '../components/leaderboard/useCountUp'
 import type { Payout, Profile, Deal, Referral } from '../lib/types'
 import { eur, eurFull, dateShort } from '../lib/format'
 
@@ -60,6 +62,7 @@ export default function Payouts() {
     return s + Math.min(Math.round(p.amount * ratio), p.amount)
   }, 0)
   const totalExpected = rows.reduce((s, p) => s + p.amount, 0)
+  const canWithdrawNow = Math.max(totalCollectable - totalPaid, 0)
 
   const { sort, toggle } = useSort('created_at', 'desc')
   const sorted = useMemo(() => {
@@ -73,6 +76,25 @@ export default function Payouts() {
     }
     return [...rows].sort((a, b) => { const av = get(a), bv = get(b); return av < bv ? -dir : av > bv ? dir : 0 })
   }, [rows, sort, map])
+
+  /* Sparkline series — cumulative money curves, one per stat card */
+  const series = useMemo(() => {
+    const chrono = [...rows].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    const paid: number[] = []
+    const collect: number[] = []
+    const expected: number[] = []
+    let sp = 0, sc = 0, se = 0
+    for (const p of chrono) {
+      sp += p.paid_amount || 0
+      se += p.amount
+      const d = p.deal_id ? dealMap[p.deal_id] : null
+      if (d && d.gross_value > 0) {
+        sc += Math.min(Math.round(p.amount * ((d.collected_amount || 0) / d.gross_value)), p.amount)
+      }
+      paid.push(sp); collect.push(sc); expected.push(se)
+    }
+    return { paid, collect, expected }
+  }, [rows, dealMap])
 
   async function recordPayment(id: string, amount: number) {
     try {
@@ -96,8 +118,6 @@ export default function Payouts() {
   function getCollectable(p: Payout): number {
     const d = p.deal_id ? dealMap[p.deal_id] : null
     if (!d || d.gross_value <= 0) return 0
-    // collectable = payout total * (collected / gross)
-    // This uses the payout's actual amount (which is always correct per current level)
     const ratio = (d.collected_amount || 0) / d.gross_value
     return Math.min(Math.round(p.amount * ratio), p.amount)
   }
@@ -153,9 +173,9 @@ export default function Payouts() {
       const paid = p.paid_amount || 0
       const tone = paid >= p.amount ? 'pos' : paid > 0 ? 'warn' : collectable > 0 ? 'info' : 'neutral'
       const label = paid >= p.amount ? 'paid' : paid > 0 ? 'partial' : collectable > 0 ? 'collectable' : p.status
-      return <Badge tone={tone as 'pos' | 'warn' | 'info' | 'neutral'} dot>{label}</Badge>
+      return <StatusPill tone={tone as 'pos' | 'warn' | 'info' | 'neutral'} label={label} />
     } },
-    { key: 'created_at', header: 'Date', align: 'right', sortable: true, cell: (p) => <span className="text-ink-400 text-2xs">{dateShort(p.created_at)}</span> },
+    { key: 'created_at', header: 'Date', align: 'right', sortable: true, cell: (p) => <span className="text-ink-400 text-2xs num">{dateShort(p.created_at)}</span> },
     ...((isAdmin ? [{
       key: 'actions', header: '', align: 'right' as const, cell: (p: Payout) => {
         const collectable = getCollectable(p)
@@ -165,65 +185,138 @@ export default function Payouts() {
           <Button size="sm" variant="secondary" icon={<Check size={14} strokeWidth={1.75} />} onClick={(e) => { e.stopPropagation(); recordPayment(p.id, collectable - paid) }}>
             Pay {eurFull(collectable - paid)}
           </Button>
-        ) : <span className="text-2xs text-ink-300">{p.paid_at ? dateShort(p.paid_at) : ''}</span>
+        ) : <span className="text-2xs text-ink-300 num">{p.paid_at ? dateShort(p.paid_at) : ''}</span>
       },
     }] : []) as Column<Payout>[]),
   ]
 
   return (
     <PageContainer>
-      <div className="mb-6 flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Payouts</h1>
-          <p className="mt-1 text-sm text-ink-400">{isAdmin ? 'All payouts across the platform — sales and referral commissions.' : 'Your earned commissions, including referral bonuses.'}</p>
+      {/* ── Hero banner — dark gradient with floating coin medallions ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="relative mb-5 overflow-hidden rounded-2xl bg-gradient-to-br from-ink-900 via-ink-800 to-ink-700 p-5 text-white shadow-glass sm:p-6 dark:from-[rgb(30,30,30)] dark:via-[rgb(23,23,23)] dark:to-[rgb(38,38,38)]"
+      >
+        {/* ambient glows */}
+        <div aria-hidden className="pointer-events-none absolute -left-10 -top-16 h-44 w-44 rounded-full bg-warn/20 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-20 right-1/4 h-40 w-40 rounded-full bg-info/20 blur-3xl" />
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+          style={{ x: '-160%', skewX: '-14deg' }}
+          animate={{ x: ['-160%', '420%'] }}
+          transition={{ duration: 1.6, delay: 0.9, repeatDelay: 7, repeat: Infinity, ease: 'easeInOut' }}
+        />
+
+        {/* Hanging coin medallions */}
+        <div aria-hidden className="pointer-events-none absolute right-4 top-0 hidden h-full sm:block">
+          <Medallion x={0} size={44} color="#f59e0b" glyph="€" delay={0} />
+          <Medallion x={70} size={34} color="#a78bfa" glyph="%" delay={0.6} />
+          <Medallion x={132} size={48} color="#34d399" glyph="€" delay={1.1} />
+          <Medallion x={196} size={30} color="#38bdf8" glyph="✦" delay={1.6} />
         </div>
+
+        <div className="relative max-w-lg">
+          <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">
+            {isAdmin ? 'Payout control tower' : 'Request your payouts'}
+          </h1>
+          <p className="mt-1.5 text-xs leading-relaxed text-white/60 sm:text-sm">
+            {isAdmin
+              ? 'Every commission across the platform — approve collections and release money in one tap.'
+              : 'Commissions you earned from sales and referrals. Collectable money is released once the deal is collected.'}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-2xs font-semibold num">
+              {rows.length} payout{rows.length === 1 ? '' : 's'}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2.5 py-1 text-2xs font-semibold text-amber-200 num">
+              {eur(canWithdrawNow)} ready
+            </span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* ── Stat cards with sparklines — one warm gamma ── */}
+      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Paid out"
+          value={totalPaid}
+          color="#f59e0b"
+          icon={<BadgeEuro size={16} strokeWidth={2} />}
+          series={series.paid}
+          loading={loading}
+          delay={0.15}
+        />
+        <StatCard
+          label="Can withdraw now"
+          value={canWithdrawNow}
+          color="#fbbf24"
+          icon={<Clock size={16} strokeWidth={2} />}
+          series={series.collect}
+          loading={loading}
+          delay={0.25}
+        />
+        <StatCard
+          label="Total expected"
+          value={totalExpected}
+          color="#fb923c"
+          icon={<Scale size={16} strokeWidth={2} />}
+          series={series.expected}
+          loading={loading}
+          delay={0.35}
+        />
       </div>
 
-      <div className="mb-5 grid grid-cols-3 gap-4">
+      {/* ── History table ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      >
         <Card>
-          <p className="text-sm text-ink-400">Paid</p>
-          <p className="mt-2 num text-2xl font-semibold tracking-tight">{eur(totalPaid)}</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-ink-400">Collectable now</p>
-          <p className="mt-2 num text-2xl font-semibold tracking-tight text-warn">{eur(Math.max(totalCollectable - totalPaid, 0))}</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-ink-400">Total expected</p>
-          <p className="mt-2 num text-2xl font-semibold tracking-tight text-ink-400">{eur(totalExpected)}</p>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader title="Payout history" action={<Button variant="secondary" size="sm" icon={<Download size={14} strokeWidth={1.75} />}>Export</Button>} />
-        {/* Desktop: table */}
-        <div className="hidden lg:block">
-          <Table
-            columns={columns}
-            rows={sorted}
-            rowKey={(p) => p.id}
-            sort={sort}
-            onSortChange={toggle}
-            loading={loading}
-            onRowClick={(p) => p.deal_id && navigate(`/deals/${p.deal_id}`)}
-            empty={<div className="flex flex-col items-center gap-3 py-12"><Wallet size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No payouts yet</p></div>}
+          <CardHeader
+            title={
+              <span className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-b from-amber-400 to-amber-600 text-white shadow-md shadow-amber-500/30">
+                  <Wallet size={15} strokeWidth={2} />
+                </span>
+                Payout history
+              </span>
+            }
+            desc={isAdmin ? 'All members · sales & referral commissions' : 'Your sales & referral commissions'}
+            action={<Button variant="secondary" size="sm" icon={<Download size={14} strokeWidth={1.75} />}>Export</Button>}
           />
-        </div>
+          {/* Desktop: table */}
+          <div className="hidden lg:block">
+            <Table
+              columns={columns}
+              rows={sorted}
+              rowKey={(p) => p.id}
+              sort={sort}
+              onSortChange={toggle}
+              loading={loading}
+              onRowClick={(p) => p.deal_id && navigate(`/deals/${p.deal_id}`)}
+              empty={<div className="flex flex-col items-center gap-3 py-12"><Wallet size={20} strokeWidth={1.75} className="text-ink-300" /><p className="text-sm text-ink-400">No payouts yet</p></div>}
+            />
+          </div>
 
-        {/* Mobile: card list — no horizontal scroll */}
-        <div className="lg:hidden">
-          <MobilePayoutList
-            rows={sorted}
-            loading={loading}
-            map={map}
-            dealMap={dealMap}
-            isAdmin={isAdmin}
-            getCollectable={getCollectable}
-            onOpen={(p) => p.deal_id && navigate(`/deals/${p.deal_id}`)}
-            onPay={recordPayment}
-          />
-        </div>
-      </Card>
+          {/* Mobile: card list — no horizontal scroll */}
+          <div className="lg:hidden">
+            <MobilePayoutList
+              rows={sorted}
+              loading={loading}
+              map={map}
+              dealMap={dealMap}
+              isAdmin={isAdmin}
+              getCollectable={getCollectable}
+              onOpen={(p) => p.deal_id && navigate(`/deals/${p.deal_id}`)}
+              onPay={recordPayment}
+            />
+          </div>
+        </Card>
+      </motion.div>
 
       {/* Referral info modal */}
       <Modal
@@ -256,6 +349,180 @@ export default function Payouts() {
         )}
       </Modal>
     </PageContainer>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Hero medallion — coin on a string, swaying                          */
+/* ------------------------------------------------------------------ */
+function Medallion({ x, size, color, glyph, delay }: { x: number; size: number; color: string; glyph: string; delay: number }) {
+  return (
+    <motion.div
+      className="absolute top-0 origin-top"
+      style={{ left: x }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, rotate: [-3.5, 3.5, -3.5] }}
+      transition={{
+        opacity: { duration: 0.5, delay: 0.3 + delay },
+        rotate: { duration: 3.4 + delay, repeat: Infinity, ease: 'easeInOut', delay },
+      }}
+    >
+      {/* string */}
+      <span className="mx-auto block w-px bg-gradient-to-b from-white/40 to-white/10" style={{ height: 26 + delay * 18 }} />
+      {/* coin */}
+      <span
+        className="mt-1 grid place-items-center rounded-full border-2 font-black shadow-lg"
+        style={{
+          width: size,
+          height: size,
+          borderColor: color,
+          color,
+          background: `radial-gradient(circle at 32% 28%, ${color}30, transparent 65%), rgba(255,255,255,0.06)`,
+          fontSize: size * 0.42,
+          boxShadow: `0 0 18px ${color}45, inset 0 0 8px ${color}25`,
+        }}
+      >
+        {glyph}
+      </span>
+    </motion.div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Stat card — colored icon chip, count-up value, animated sparkline   */
+/* ------------------------------------------------------------------ */
+function StatCard({
+  label, value, color, icon, series, loading, delay,
+}: {
+  label: string
+  value: number
+  color: string
+  icon: React.ReactNode
+  series: number[]
+  loading?: boolean
+  delay?: number
+}) {
+  const animated = useCountUp(value, 1.2, delay)
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay, ease: [0.22, 1, 0.36, 1] }}
+      className="relative overflow-hidden rounded-2xl border border-line bg-surface p-4"
+    >
+      {/* tone wash */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ background: `linear-gradient(150deg, ${color}1f 0%, transparent 52%)` }}
+      />
+      <div className="relative">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="grid h-9 w-9 place-items-center rounded-xl text-white shadow-md"
+            style={{ background: `linear-gradient(160deg, ${color}, ${color}bb)`, boxShadow: `0 6px 14px -4px ${color}70` }}
+          >
+            {icon}
+          </span>
+          <p className="text-xs font-semibold text-ink-500 dark:text-ink-300">{label}</p>
+        </div>
+
+        {loading ? (
+          <div className="skeleton mt-3 h-8 w-36 rounded-lg" />
+        ) : (
+          <p className="num mt-3 text-[28px] font-extrabold leading-none tracking-tight" style={{ color }}>
+            {eur(Math.round(animated))}
+          </p>
+        )}
+
+        {!loading && series.length > 1 && (
+          <Spark data={series} color={color} delay={(delay ?? 0) + 0.4} />
+        )}
+        {!loading && series.length <= 1 && (
+          <div className="mt-3 h-9" />
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+/* Smooth mini area-chart with draw-in animation */
+function Spark({ data, color, delay }: { data: number[]; color: string; delay: number }) {
+  const w = 220
+  const h = 40
+  const max = Math.max(...data, 1)
+  const min = Math.min(...data, 0)
+  const span = max - min || 1
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * (w - 6) + 3
+    const y = h - 4 - ((v - min) / span) * (h - 10)
+    return [x, y] as const
+  })
+  // smooth path via quadratic midpoints
+  let d = `M ${pts[0][0]},${pts[0][1]}`
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1]
+    const [x1, y1] = pts[i]
+    const mx = (x0 + x1) / 2
+    d += ` Q ${x0},${y0} ${mx},${(y0 + y1) / 2} T ${x1},${y1}`
+  }
+  const areaD = `${d} L ${pts[pts.length - 1][0]},${h} L ${pts[0][0]},${h} Z`
+  const last = pts[pts.length - 1]
+  const gid = `spark-${color.replace('#', '')}`
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="mt-3 h-10 w-full" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <motion.path
+        d={areaD}
+        fill={`url(#${gid})`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8, delay: delay + 0.5 }}
+      />
+      <motion.path
+        d={d}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ duration: 1.4, delay, ease: [0.22, 1, 0.36, 1] }}
+      />
+      <motion.circle
+        cx={last[0]}
+        cy={last[1]}
+        r="3"
+        fill={color}
+        initial={{ scale: 0 }}
+        animate={{ scale: [0, 1.4, 1] }}
+        transition={{ duration: 0.5, delay: delay + 1.3 }}
+        style={{ transformOrigin: `${last[0]}px ${last[1]}px` }}
+      />
+    </svg>
+  )
+}
+
+/* Reference-style filled status pill */
+function StatusPill({ tone, label }: { tone: 'pos' | 'warn' | 'info' | 'neutral'; label: string }) {
+  const cls = {
+    pos: 'bg-posBg text-pos border-pos/25',
+    warn: 'bg-warnBg text-warn border-warn/25',
+    info: 'bg-infoBg text-info border-info/25',
+    neutral: 'bg-ink-100 text-ink-500 border-line dark:bg-ink-200 dark:text-ink-400',
+  }[tone]
+  const dot = { pos: '#22c55e', warn: '#f59e0b', info: '#3b82f6', neutral: '#a3a3a3' }[tone]
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-2xs font-bold capitalize ${cls}`}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
+      {label}
+    </span>
   )
 }
 

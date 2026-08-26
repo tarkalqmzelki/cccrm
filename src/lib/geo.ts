@@ -123,7 +123,7 @@ export function matchCountry(text: string): string | null {
 /* Aggregation                                                         */
 /* ------------------------------------------------------------------ */
 
-export interface GeoLeadInput { key: string; text: string; id: string; name: string; address: string }
+export interface GeoLeadInput { key: string; text: string; id: string; name: string; address: string; city?: string; services?: string }
 export interface GeoDealInput { key: string; text: string; value: number; id: string; company: string; status: string }
 
 export interface CountryStat {

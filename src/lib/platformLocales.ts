@@ -28,6 +28,7 @@ export const LOCALE_KEYS: LocaleKeyDef[] = [
   { key: 'nav.deals',           label: 'Deals',           group: 'Navigation' },
   { key: 'nav.leaderboard',     label: 'Leaderboard',     group: 'Navigation' },
   { key: 'nav.challenges',      label: 'Challenges',      group: 'Navigation' },
+  { key: 'nav.bank',            label: 'Bank',            group: 'Navigation' },
   { key: 'nav.marketplace',     label: 'Lead Marketplace', group: 'Navigation' },
   { key: 'nav.map',             label: 'Map',             group: 'Navigation' },
   { key: 'nav.referrals',       label: 'Referrals',       group: 'Navigation' },

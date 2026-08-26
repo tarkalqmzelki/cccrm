@@ -12,7 +12,6 @@ import { Card, CardHeader } from '../components/ui/Card'
 import { Skeleton } from '../components/ui/Skeleton'
 import { Modal } from '../components/ui/Modal'
 import { Badge } from '../components/ui/Badge'
-import { MotionBorder } from '../components/ui/MotionBorder'
 import { Crosshair } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { eur } from '../lib/format'
@@ -85,10 +84,13 @@ export default function MapPage() {
     }
     const leadItems: GeoLeadInput[] = scoped.companies.map((c) => ({
       key: c.id,
-      text: `${c.name} ${c.address} ${c.website} ${c.domain}`,
+      // Structured country/city dominate the match; the rest is fallback.
+      text: `${(c as { country?: string }).country || ''} ${(c as { city?: string }).city || ''} ${c.name} ${c.address} ${c.website} ${c.domain}`,
       id: c.id,
       name: c.name || 'Untitled lead',
-      address: c.address || '',
+      address: [(c as { city?: string }).city, (c as { country?: string }).country].filter(Boolean).join(', ') || c.address || '',
+      city: (c as { city?: string }).city || '',
+      services: (c as { services_offered?: string }).services_offered || '',
     }))
     const dealItems: GeoDealInput[] = countedDeals.map((d) => {
       const linkedCompanyId = companyIdByName.get((d.company || '').toLowerCase().trim())
@@ -343,7 +345,14 @@ export default function MapPage() {
                   {drillLeads.map((l) => (
                     <li key={l.id} className="rounded-lg border border-line px-3 py-2 text-sm">
                       <p className="truncate font-medium">{l.name}</p>
-                      {l.address && <p className="truncate text-2xs text-ink-400">{l.address}</p>}
+                      <p className="truncate text-2xs text-ink-400">{l.address || '—'}</p>
+                      {l.services && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {l.services.split(',').slice(0, 4).map((s) => (
+                            <span key={s} className="rounded-full border border-info/25 bg-infoBg px-2 py-0.5 text-[9px] font-semibold capitalize text-info">{s.trim()}</span>
+                          ))}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -383,24 +392,35 @@ function prettyName(name: string): string {
 
 function Chip({ label, value, tone, delay }: { label: string; value: string; tone: string; delay: number }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay }}>
-      <MotionBorder colors={[tone, `${tone}66`, tone]} speed={7}>
-        <div className="px-3.5 py-2">
-          <p className="text-2xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
-          <p className="num text-base font-extrabold" style={{ color: tone }}>{value}</p>
-        </div>
-      </MotionBorder>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay }} className="liquid-tile">
+      {/* tone gradient wash */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ background: `linear-gradient(150deg, ${tone}30 0%, transparent 52%), radial-gradient(120% 90% at 100% 100%, ${tone}1c 0%, transparent 62%)` }}
+      />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+      <div className="relative px-3.5 py-2">
+        <p className="text-2xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
+        <p className="num text-base font-extrabold" style={{ color: tone }}>{value}</p>
+      </div>
     </motion.div>
   )
 }
 
 function MiniStat({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
-    <MotionBorder colors={[tone, `${tone}55`, tone]} radius="rounded-lg" speed={7}>
-      <div className="px-3 py-2">
+    <div className="liquid-tile">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ background: `linear-gradient(150deg, ${tone}30 0%, transparent 52%)` }}
+      />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+      <div className="relative px-3 py-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-400">{label}</p>
         <p className="num text-sm font-extrabold" style={{ color: tone }}>{value}</p>
       </div>
-    </MotionBorder>
+    </div>
   )
 }
