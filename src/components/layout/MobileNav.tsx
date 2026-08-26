@@ -7,15 +7,28 @@ import { loadNavSlots } from './navSlots'
 import { useAuth } from '../../context/AuthContext'
 import { useSidebarBadges } from '../../lib/hooks/useSidebarBadges'
 
+/** Tracks the app's own `.dark` class on <html> (in-app toggle). */
+function useAppDarkTheme(): boolean {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
+  useEffect(() => {
+    const obs = new MutationObserver(() => setDark(document.documentElement.classList.contains('dark')))
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => obs.disconnect()
+  }, [])
+  return dark
+}
+
 /**
- * Floating bottom nav (mobile) — Instagram style: a slim solid dark
- * pill, icon-only items, and a soft gray capsule behind the active
- * icon. No labels, no glass. Red dots mark pending badges.
+ * Floating bottom nav (mobile) — Instagram style: a slim solid pill,
+ * icon-only items (strokes preserved — never filled), and a soft
+ * capsule behind the active icon. Theme-aware: dark charcoal in dark
+ * mode, clean white in light mode. Red dots mark pending badges.
  */
 export function MobileNav() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const badges = useSidebarBadges(user)
+  const isDark = useAppDarkTheme()
 
   const [slots, setSlots] = useState<string[]>(() => {
     if (!user) return []
@@ -49,7 +62,13 @@ export function MobileNav() {
       className="lg:hidden fixed inset-x-0 z-40 flex justify-center px-3"
       style={{ bottom: 'calc(12px + var(--safe-bottom))' }}
     >
-      <div className="flex items-center gap-0.5 rounded-full border border-white/10 bg-[#0f0f12] p-1.5 shadow-[0_18px_44px_-12px_rgba(0,0,0,0.55)]">
+      <div
+        className={`flex items-center gap-0.5 rounded-full border p-1.5 ${
+          isDark
+            ? 'border-white/10 bg-[#0f0f12] shadow-[0_18px_44px_-12px_rgba(0,0,0,0.55)]'
+            : 'border-black/[0.08] bg-white shadow-[0_18px_44px_-16px_rgba(0,0,0,0.28)]'
+        }`}
+      >
         {visible.map((n) => {
           const count = badgeFor(n.to)
           const isActive = (() => {
@@ -65,7 +84,9 @@ export function MobileNav() {
               aria-label={n.label}
               title={n.label}
               className={`relative flex h-11 min-w-[62px] items-center justify-center rounded-full px-4 transition-colors duration-200 ${
-                isActive ? 'text-white' : 'text-white/60 hover:text-white'
+                isActive
+                  ? isDark ? 'text-white' : 'text-black'
+                  : isDark ? 'text-white/60 hover:text-white' : 'text-black/50 hover:text-black'
               }`}
             >
               {/* Active capsule — the gray Instagram-style pill */}
@@ -73,14 +94,18 @@ export function MobileNav() {
                 <motion.span
                   layoutId="nav-active-pill"
                   transition={{ type: 'spring', stiffness: 430, damping: 36 }}
-                  className="absolute inset-0 rounded-full bg-[#3c3c42]"
+                  className={`absolute inset-0 rounded-full ${isDark ? 'bg-[#3c3c42]' : 'bg-black/[0.08]'}`}
                 />
               )}
               <span className="relative">
-                <n.icon size={24} strokeWidth={2} style={{ fill: isActive ? 'currentColor' : 'none' }} />
+                {/* Strokes stay strokes — no fill, so glyphs never blob out */}
+                <n.icon size={24} strokeWidth={2} />
                 {/* Instagram-style red dot for pending badges */}
                 {count > 0 && (
-                  <span className="absolute -right-1.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#ff3040] ring-2 ring-[#0f0f12]" />
+                  <span
+                    className="absolute -right-1.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-[#ff3040]"
+                    style={{ boxShadow: isDark ? '0 0 0 2px #0f0f12' : '0 0 0 2px #ffffff' }}
+                  />
                 )}
               </span>
             </button>
