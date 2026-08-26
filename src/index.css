@@ -401,7 +401,7 @@ body {
   }
 }
 
-/* Thin, calm scrollbars */
+/* Thin, calm scrollbars (desktop) … */
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-thumb {
   background: rgb(var(--ink-200));
@@ -412,6 +412,21 @@ body {
 *::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--ink-300));
   background-clip: content-box;
+}
+
+/* …completely hidden on phones & touch devices — Android/Chrome renders
+   the styled bar inline (taking layout width); iOS overlays anyway, and
+   touch scrolling is obvious without an indicator. */
+@media (max-width: 767px), (pointer: coarse) {
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }
 
 /* ===================================================================== */
