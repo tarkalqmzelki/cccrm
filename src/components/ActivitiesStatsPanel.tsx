@@ -5,7 +5,6 @@ import { Card, CardHeader } from './ui/Card'
 import { Avatar } from './ui/Avatar'
 import { Skeleton } from './ui/Skeleton'
 import { LeadScoreGauge } from './ui/LeadScoreGauge'
-import { MotionBorder } from './ui/MotionBorder'
 import { GAUGE_CORAL, GAUGE_GREEN, GAUGE_SLATE, GAUGE_TEAL } from './ui/gaugeColors'
 import { computeMemberStats } from '../lib/hooks/useActivityStats'
 import type { ScheduledActivity, Company, Deal, Profile } from '../lib/types'
@@ -161,18 +160,27 @@ function Stat({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay }}
+      className="liquid-tile"
     >
-      <MotionBorder colors={[tone, `${tone}55`, tone]} speed={7}>
-        <div className="px-3 py-2.5">
-          <div className="flex items-center justify-between">
-            <p className="text-2xs text-ink-400">{label}</p>
-            <span style={{ color: tone }}>{icon}</span>
-          </div>
-          <p className="mt-1 num text-lg font-semibold leading-none" style={{ color: tone }}>
-            {value === undefined ? <span className="inline-block h-4 w-10 rounded skeleton align-middle" /> : value}
-          </p>
+      {/* Tone gradient wash — static, like a tinted glass pane */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: `linear-gradient(150deg, ${tone}30 0%, transparent 52%), radial-gradient(120% 90% at 100% 100%, ${tone}1c 0%, transparent 62%)`,
+        }}
+      />
+      {/* Top gloss line */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+      <div className="relative px-3 py-2.5">
+        <div className="flex items-center justify-between">
+          <p className="text-2xs text-ink-400">{label}</p>
+          <span style={{ color: tone }}>{icon}</span>
         </div>
-      </MotionBorder>
+        <p className="num mt-1 text-lg font-semibold leading-none" style={{ color: tone }}>
+          {value === undefined ? <span className="inline-block h-4 w-10 rounded skeleton align-middle" /> : value}
+        </p>
+      </div>
     </motion.div>
   )
 }

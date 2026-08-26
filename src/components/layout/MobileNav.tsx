@@ -72,7 +72,7 @@ export function MobileNav() {
       {/* SVG displacement-lens defs — rendered only when supported */}
       {lens && <LiquidGlassFilter />}
 
-      <div className={`glass-refract w-full max-w-md px-2 py-2.5 ${isDark ? '' : 'light'}${lens ? ' lens' : ''}`}>
+      <div className={`glass-refract w-auto px-1.5 py-2 ${isDark ? '' : 'light'}${lens ? ' lens' : ''}`}>
         <div className="relative z-[2] flex items-stretch">
           {visible.map((n) => {
             const count = badgeFor(n.to)
@@ -86,17 +86,17 @@ export function MobileNav() {
                 key={n.to}
                 type="button"
                 onClick={() => navigate(n.to)}
-                className={`relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[24px] py-2 text-[10px] font-bold transition-colors duration-200 ${
+                className={`relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[22px] px-5 py-2 text-[10px] font-bold transition-colors duration-200 ${
                   isActive ? 'text-ink dark:text-white' : 'text-ink-400 dark:text-white/50'
                 }`}
               >
-                {/* Active capsule — floats above the glass */}
+                {/* Active bubble — fills its slot so it reads big inside the slim bar */}
                 {isActive && (
                   <motion.span
                     layoutId="liquid-capsule"
                     transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                    className="liquid-capsule rounded-[24px]"
-                    style={{ inset: '-2px' }}
+                    className="liquid-capsule rounded-[20px]"
+                    style={{ inset: '1px 2px' }}
                   />
                 )}
                 <span className="relative">

@@ -227,6 +227,26 @@ body {
     animation: sheen-x var(--sheen-cycle, 9s) ease-in-out infinite;
   }
 
+  /* Glass stat tile — calm gradient wash under real glass, no motion */
+  .liquid-tile {
+    position: relative;
+    overflow: hidden;
+    border-radius: 14px;
+    background-color: rgb(var(--surface) / 0.55);
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    backdrop-filter: blur(18px) saturate(170%);
+    border: 1px solid rgb(var(--line));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 8px 20px -10px rgba(10, 10, 10, 0.18);
+  }
+  .dark .liquid-tile {
+    background-color: rgb(28 28 28 / 0.55);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.07),
+      0 8px 20px -10px rgba(0, 0, 0, 0.45);
+  }
+
   /* ================================================================= */
   /* LIQUID GLASS NAV — liquid-glass-studio-style rim refraction        */
   /* ================================================================= */

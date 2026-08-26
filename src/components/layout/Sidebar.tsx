@@ -248,7 +248,7 @@ function MobileNavList({
           const open = expanded.has(n.to)
           return (
             <Fragment key={n.to}>
-              <div className="relative flex items-center" onClick={(e) => e.stopPropagation()}>
+              <div className="relative flex items-center">
                 <NavLink
                   to={n.to}
                   end={n.to === '/'}
@@ -264,7 +264,7 @@ function MobileNavList({
                 </NavLink>
                 {children.length > 0 && (
                   <motion.button
-                    onClick={() => toggleParent(n.to)}
+                    onClick={(e) => { e.stopPropagation(); toggleParent(n.to) }}
                     animate={{ rotate: open ? 0 : -90 }}
                     transition={{ duration: 0.18 }}
                     className="mr-1 shrink-0 rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-ink-50 hover:text-ink dark:hover:bg-[rgb(28,28,28)]"
@@ -320,7 +320,7 @@ function MobileNavList({
         const open = expanded.has(n.to)
         return (
           <Fragment key={n.to}>
-            <div className="relative flex items-center" onClick={(e) => e.stopPropagation()}>
+            <div className="relative flex items-center">
               <NavLink
                 to={n.to}
                 end={n.to === '/'}
@@ -336,7 +336,7 @@ function MobileNavList({
               </NavLink>
               {children.length > 0 && (
                 <motion.button
-                  onClick={() => toggleParent(n.to)}
+                  onClick={(e) => { e.stopPropagation(); toggleParent(n.to) }}
                   animate={{ rotate: open ? 0 : -90 }}
                   transition={{ duration: 0.18 }}
                   className="mr-1 shrink-0 rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-ink-50 hover:text-ink dark:hover:bg-[rgb(28,28,28)]"

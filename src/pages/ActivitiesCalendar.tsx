@@ -640,15 +640,19 @@ function DayActivityRow({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: Math.min((index ?? 0) * 0.05, 0.25) }}
-      className={`overflow-hidden rounded-xl border transition-colors ${
-        expanded ? 'border-ink-200 bg-ink-50/30' : 'border-line bg-surface hover:border-ink-200'
-      }`}
-      style={{ borderLeft: `3px solid ${color}` }}
+      className="relative overflow-hidden rounded-xl border transition-all duration-200 hover:shadow-sm"
+      style={{
+        backgroundColor: 'rgb(var(--surface))',
+        borderColor: expanded ? `${color}66` : `${color}38`,
+        backgroundImage: `linear-gradient(135deg, ${color}${expanded ? '3d' : '2b'} 0%, ${color}${expanded ? '22' : '16'} 46%, transparent 78%)`,
+      }}
     >
+      {/* gloss line — the glass touch */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
       <div
         onClick={onToggle}
         onContextMenu={onContext}
-        className="flex cursor-pointer items-center gap-3 px-3 py-2.5"
+        className="relative flex cursor-pointer items-center gap-3 px-3 py-2.5"
       >
         <span className="w-12 shrink-0 text-right num text-2xs font-medium text-ink-600">{startTime}</span>
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-white" style={{ background: color }}>
@@ -709,7 +713,7 @@ function DayActivityRow({
                 <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-info/[0.07] to-transparent p-[1px]">
                   <div className="rounded-[7px] bg-surface p-2.5 dark:bg-[rgb(23,23,23)]">
                     <p className="mb-0.5 text-2xs font-medium uppercase tracking-wide text-ink-400">Purpose / notes</p>
-                    <p className="whitespace-pre-wrap text-sm text-ink-700 dark:text-ink-200">{activity.notes}</p>
+                    <p className="whitespace-pre-wrap text-sm text-ink-700 dark:text-white">{activity.notes}</p>
                   </div>
                 </div>
               )}
@@ -748,7 +752,7 @@ function Detail({ icon, label, tone = '#9ca3af', children }: { icon: React.React
         <span className="mt-0.5" style={{ color: tone }}>{icon}</span>
         <div className="min-w-0 flex-1">
           <p className="text-2xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
-          <div className="mt-0.5 truncate text-sm text-ink-700 dark:text-ink-200">{children}</div>
+          <div className="mt-0.5 truncate text-sm font-medium text-[rgb(23,23,23)] dark:text-white">{children}</div>
         </div>
       </div>
     </MotionBorder>
