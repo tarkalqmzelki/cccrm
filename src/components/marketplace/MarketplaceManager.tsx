@@ -33,6 +33,7 @@ export function MarketplaceManager({ adminId }: { adminId: string }) {
 
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [, setTick] = useState(0)
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
@@ -42,12 +43,16 @@ export function MarketplaceManager({ adminId }: { adminId: string }) {
     )
   }, [leads, search])
 
-  /* tick for countdowns */
-  const [, setTick] = useState(0)
+  /* tick for countdowns — only while some published card is locked */
+  const hasCountdown = useMemo(
+    () => leads.some((l) => l.unlock_at && !l.claimed_by && new Date(l.unlock_at).getTime() > Date.now()),
+    [leads],
+  )
   useEffect(() => {
+    if (!hasCountdown) return
     const t = setInterval(() => setTick((x) => x + 1), 1000)
     return () => clearInterval(t)
-  }, [])
+  }, [hasCountdown])
 
   function toggle(id: string) {
     setSelected((s) => {

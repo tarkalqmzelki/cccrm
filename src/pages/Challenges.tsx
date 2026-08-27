@@ -286,7 +286,7 @@ export default function Challenges() {
         <>
           <div className="grid gap-4 lg:grid-cols-2">
             {live.map((c, i) => (
-              <ChallengeCard key={c.id} c={c} index={i} progress={progressOf(c)} justDone={false} onBump={c.type === 'regular' ? () => bump(c) : undefined} />
+              <ChallengeCard key={c.id} c={c} index={i} progress={progressOf(c)} target={targetOf(c)} fe={flowEvalOf(c)} justDone={false} onBump={c.type === 'regular' ? () => bump(c) : undefined} />
             ))}
             {live.length === 0 && doneActive.length > 0 && (
               <p className="text-sm text-ink-400 lg:col-span-2">Every live quest is conquered. Legendary.</p>
@@ -301,7 +301,7 @@ export default function Challenges() {
                 </p>
                 <div className="grid gap-4 opacity-80 lg:grid-cols-2">
                   {doneActive.map((c, i) => (
-                    <ChallengeCard key={c.id} c={c} index={i} progress={targetOf(c)} justDone={justDone.has(c.id)} onBump={undefined} />
+                    <ChallengeCard key={c.id} c={c} index={i} progress={targetOf(c)} target={targetOf(c)} fe={flowEvalOf(c)} justDone={justDone.has(c.id)} onBump={undefined} />
                   ))}
                 </div>
               </motion.div>
@@ -313,7 +313,7 @@ export default function Challenges() {
               <p className="mb-3 text-2xs font-bold uppercase tracking-wider text-ink-300">Past challenges</p>
               <div className="grid gap-4 opacity-50 lg:grid-cols-2">
                 {conquered.slice(0, 4).map((c, i) => (
-                  <ChallengeCard key={c.id} c={c} index={i} progress={Math.min(progressOf(c), targetOf(c))} justDone={false} onBump={undefined} />
+                  <ChallengeCard key={c.id} c={c} index={i} progress={Math.min(progressOf(c), targetOf(c))} target={targetOf(c)} fe={flowEvalOf(c)} justDone={false} onBump={undefined} />
                 ))}
               </div>
             </div>
@@ -322,22 +322,28 @@ export default function Challenges() {
       )}
     </PageContainer>
   )
+}
 
-  function ChallengeCard({
-    c, index, progress, justDone: celebrate, onBump,
-  }: {
-    c: Challenge
-    index: number
-    progress: number
-    justDone: boolean
-    onBump?: () => void
-  }) {
+/* ------------------------------------------------------------------ */
+/* Challenge card — module scope: a nested component identity remounts
+   the whole subtree on every parent render (state/interval ticks),
+   replaying entrance animations. Hoisted for stability.             */
+/* ------------------------------------------------------------------ */
+function ChallengeCard({
+  c, index, progress, target, fe, justDone: celebrate, onBump,
+}: {
+  c: Challenge
+  index: number
+  progress: number
+  target: number
+  fe: ReturnType<typeof evaluateRuleFlow> | null
+  justDone: boolean
+  onBump?: () => void
+}) {
     const accent = c.type === 'functional' ? '#3b82f6' : '#a855f7'
     const isTeam = c.scope === 'team'
-    const fe = flowEvalOf(c)
-    const target = fe ? 100 : c.target_count
-    const pct = fe ? fe.pct : Math.min(100, (progress / c.target_count) * 100)
-    const complete = fe ? fe.completed : progress >= c.target_count
+    const pct = fe ? fe.pct : Math.min(100, (progress / target) * 100)
+    const complete = fe ? fe.completed : progress >= target
     const rewardPoints = fe ? fe.reward.points || c.points : c.points
     const rewardBonus = fe ? fe.reward.bonus : c.financial_bonus
 
@@ -491,8 +497,7 @@ export default function Challenges() {
           </div>
         </MotionBorder>
       </motion.div>
-    )
-  }
+  )
 }
 
 /* Stamp completion via the same upsert path used by bump (progress stays). */

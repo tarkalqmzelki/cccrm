@@ -33,14 +33,10 @@ export default function MarketplacePage() {
   const { push } = useToast()
   const leadsQ = useAsync(async () => db.listMarketLeads(), [])
   const [search, setSearch] = useState('')
+  const [industry, setIndustry] = useState<string>('all')
   const [preview, setPreview] = useState<MarketLead | null>(null)
   const [claimTarget, setClaimTarget] = useState<MarketLead | null>(null)
   const [, setTick] = useState(0)
-
-  useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 1000)
-    return () => clearInterval(t)
-  }, [])
 
   const mineCount = useMemo(
     () => (leadsQ.data || []).filter((l) => l.claimed_by === user?.id).length,
@@ -54,16 +50,49 @@ export default function MarketplacePage() {
     )
   }, [leadsQ.data, user?.id])
 
+  /* Distinct industries (categories) across published shelf */
+  const industries = useMemo(() => {
+    const set = new Set<string>()
+    available.forEach((l) => {
+      const i = (l.industry || '').trim()
+      if (i) set.add(i)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [available])
+
+  const industryCount = useMemo(() => {
+    const m = new Map<string, number>()
+    available.forEach((l) => {
+      const i = (l.industry || '').trim()
+      if (i) m.set(i, (m.get(i) || 0) + 1)
+    })
+    return m
+  }, [available])
+
   const filtered = useMemo(() => {
+    let list = available
+    if (industry !== 'all') list = list.filter((l) => (l.industry || '').trim() === industry)
     const q = search.toLowerCase().trim()
-    if (!q) return available
-    return available.filter((l) => `${l.name} ${l.industry} ${l.address} ${l.summary}`.toLowerCase().includes(q))
-  }, [available, search])
+    if (!q) return list
+    return list.filter((l) => `${l.name} ${l.industry} ${l.address} ${l.summary}`.toLowerCase().includes(q))
+  }, [available, industry, search])
 
   const reservedFirst = useMemo(
     () => [...filtered].sort((a, b) => (b.allocated_to === user?.id ? 1 : 0) - (a.allocated_to === user?.id ? 1 : 0)),
     [filtered, user?.id],
   )
+
+  /* Tick only while a claim countdown is on screen — otherwise the page
+     is perfectly static (no re-renders, no animation restarts). */
+  const hasCountdown = useMemo(
+    () => available.some((l) => l.unlock_at && new Date(l.unlock_at).getTime() > Date.now()),
+    [available],
+  )
+  useEffect(() => {
+    if (!hasCountdown) return
+    const t = setInterval(() => setTick((x) => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [hasCountdown])
 
   async function performClaim(l: MarketLead): Promise<void> {
     if (!user) throw new Error('Not signed in')
@@ -140,6 +169,38 @@ export default function MarketplacePage() {
           </button>
         )}
       </div>
+
+      {/* Industry category filter */}
+      {industries.length > 0 && (
+        <div className="-mx-1 mb-5 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+          <button
+            onClick={() => setIndustry('all')}
+            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+              industry === 'all'
+                ? 'border-ink bg-ink text-white'
+                : 'border-line bg-surface text-ink-500 hover:border-ink-200 hover:text-ink'
+            }`}
+          >
+            All <span className="num opacity-60">{available.length}</span>
+          </button>
+          {industries.map((ind) => {
+            const activeChip = industry === ind
+            return (
+              <button
+                key={ind}
+                onClick={() => setIndustry(activeChip ? 'all' : ind)}
+                className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                  activeChip
+                    ? 'border-ink bg-ink text-white'
+                    : 'border-line bg-surface text-ink-500 hover:border-ink-200 hover:text-ink'
+                }`}
+              >
+                {ind} <span className="num opacity-60">{industryCount.get(ind)}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {leadsQ.loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -242,93 +303,97 @@ export default function MarketplacePage() {
       )}
     </PageContainer>
   )
+}
 
-  /* ---------------------------------------------------------------- */
-  function MarketCard({
-    lead, index, isMineReservation, onClaim, onPreview, onMenu,
-  }: {
-    lead: MarketLead
-    index: number
-    isMineReservation: boolean
-    onClaim: () => void
-    onPreview: () => void
-    onMenu: (e: React.MouseEvent) => void
-  }) {
-    const state = marketLeadState(lead)
-    const countdown = state === 'locked' ? fmtCountdown(lead.unlock_at) : null
-    const locked = state === 'locked'
-    const glow = locked ? 'rgba(245,158,11,0.22)' : isMineReservation ? 'rgba(168,85,247,0.25)' : 'rgba(34,197,94,0.20)'
+/* ------------------------------------------------------------------ */
+/* Market card — module scope so per-second countdown re-renders never
+   remount it (a nested component identity replays entrance animations
+   on every parent render — the "constant flicker" bug).            */
+/* ------------------------------------------------------------------ */
+function MarketCard({
+  lead, index, isMineReservation, onClaim, onPreview, onMenu,
+}: {
+  lead: MarketLead
+  index: number
+  isMineReservation: boolean
+  onClaim: () => void
+  onPreview: () => void
+  onMenu: (e: React.MouseEvent) => void
+}) {
+  const state = marketLeadState(lead)
+  const countdown = state === 'locked' ? fmtCountdown(lead.unlock_at) : null
+  const locked = state === 'locked'
+  const glow = locked ? 'rgba(245,158,11,0.22)' : isMineReservation ? 'rgba(168,85,247,0.25)' : 'rgba(34,197,94,0.20)'
 
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: Math.min(index * 0.05, 0.35), ease: [0.22, 1, 0.36, 1] }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-ink-900 via-ink-800 to-ink-700 text-white shadow-glass dark:from-[rgb(30,30,30)] dark:via-[rgb(23,23,23)] dark:to-[rgb(38,38,38)]"
-      >
-        {/* accent glow + sheen */}
-        <div aria-hidden className="pointer-events-none absolute -right-8 -top-12 h-32 w-32 rounded-full blur-3xl" style={{ background: glow }} />
-        {!locked && (
-          <div
-            aria-hidden
-            className="sheen-x pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent"
-            style={{ '--sheen-cycle': '10s' } as React.CSSProperties}
-          />
-        )}
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: Math.min(index * 0.05, 0.35), ease: [0.22, 1, 0.36, 1] }}
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-ink-900 via-ink-800 to-ink-700 text-white shadow-glass dark:from-[rgb(30,30,30)] dark:via-[rgb(23,23,23)] dark:to-[rgb(38,38,38)]"
+    >
+      {/* accent glow + sheen */}
+      <div aria-hidden className="pointer-events-none absolute -right-8 -top-12 h-32 w-32 rounded-full blur-3xl" style={{ background: glow }} />
+      {!locked && (
+        <div
+          aria-hidden
+          className="sheen-x pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent"
+          style={{ '--sheen-cycle': '10s' } as React.CSSProperties}
+        />
+      )}
 
-        <div className="relative flex h-full flex-col p-4">
-          <div className="mb-2 flex items-start justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {isMineReservation && (
-                <span className="rounded-full border border-violet-300/40 bg-violet-400/20 px-2 py-0.5 text-2xs font-bold text-violet-100">
-                  Reserved for you
-                </span>
-              )}
-              {lead.industry && (
-                <span className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-2xs font-medium text-white/80">
-                  {lead.industry}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); onMenu(e as unknown as React.MouseEvent) }}
-              title="More actions"
-              className="-mr-1.5 -mt-1 shrink-0 rounded-lg p-1.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <MoreVertical size={16} strokeWidth={1.75} />
-            </button>
-          </div>
-
-          <button onClick={onPreview} className="text-left">
-            <p className="line-clamp-2 text-sm font-bold leading-snug text-white">{lead.name}</p>
-          </button>
-
-          <div className="mt-1.5 space-y-1 text-2xs text-white/55">
-            {lead.address && <p className="truncate">{lead.address}</p>}
-            {lead.summary && <p className="line-clamp-2 leading-relaxed text-white/65">{lead.summary}</p>}
-          </div>
-
-          <div className="mt-auto pt-3">
-            {locked ? (
-              <button
-                disabled
-                className="flex h-9 w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 text-xs font-semibold text-white/70"
-              >
-                <Lock size={13} strokeWidth={1.75} /> Unlocks in {countdown}
-              </button>
-            ) : (
-              <button
-                onClick={onClaim}
-                className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-white text-xs font-bold text-[rgb(10,10,10)] transition-all hover:bg-white/90 active:scale-[0.98]"
-              >
-                <Sparkles size={13} strokeWidth={2} /> Claim this lead
-              </button>
+      <div className="relative flex h-full flex-col p-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {isMineReservation && (
+              <span className="rounded-full border border-violet-300/40 bg-violet-400/20 px-2 py-0.5 text-2xs font-bold text-violet-100">
+                Reserved for you
+              </span>
+            )}
+            {lead.industry && (
+              <span className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-2xs font-medium text-white/80">
+                {lead.industry}
+              </span>
             )}
           </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onMenu(e as unknown as React.MouseEvent) }}
+            title="More actions"
+            className="-mr-1.5 -mt-1 shrink-0 rounded-lg p-1.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <MoreVertical size={16} strokeWidth={1.75} />
+          </button>
         </div>
-      </motion.div>
-    )
-  }
+
+        <button onClick={onPreview} className="text-left">
+          <p className="line-clamp-2 text-sm font-bold leading-snug text-white">{lead.name}</p>
+        </button>
+
+        <div className="mt-1.5 space-y-1 text-2xs text-white/55">
+          {lead.address && <p className="truncate">{lead.address}</p>}
+          {lead.summary && <p className="line-clamp-2 leading-relaxed text-white/65">{lead.summary}</p>}
+        </div>
+
+        <div className="mt-auto pt-3">
+          {locked ? (
+            <button
+              disabled
+              className="flex h-9 w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 text-xs font-semibold text-white/70"
+            >
+              <Lock size={13} strokeWidth={1.75} /> Unlocks in {countdown}
+            </button>
+          ) : (
+            <button
+              onClick={onClaim}
+              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-white text-xs font-bold text-[rgb(10,10,10)] transition-all hover:bg-white/90 active:scale-[0.98]"
+            >
+              <Sparkles size={13} strokeWidth={2} /> Claim this lead
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
 }
 
 /* ------------------------------------------------------------------ */
