@@ -15,6 +15,7 @@ import type {
   MarketLead,
   BankCard, BankTransaction, BankTxKind,
   RuleFlow,
+  CreditSettings, CreditEntry, RedeemItem, Redemption,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
 import type { LanguageTranslations } from './translations'
@@ -430,6 +431,7 @@ export const db = {
       country: c.country || '',
       city: c.city || '',
       services_offered: c.services_offered || '',
+      marketplace_source: c.marketplace_source ?? null,
       created_by: c.created_by || null,
     }
     const { data, error } = await supabase!.from('companies').insert(row).select().single()
@@ -1301,6 +1303,108 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
 
   async deleteBankTransaction(id: string): Promise<void> {
     const { error } = await supabase!.from('bank_transactions').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  /* ---------- TOKENIZATION / CC CREDITS (schema67) ---------- */
+  async getCreditSettings(): Promise<CreditSettings> {
+    const { data, error } = await supabase!
+      .from('credit_settings').select('*').eq('id', 1).single()
+    if (error || !data) {
+      return {
+        id: 1,
+        credits_per_deal_submitted: 10,
+        credits_per_deal_approved: 25,
+        credits_per_offer_created: 5,
+        credits_per_lead_created: 5,
+        credits_per_mp_converted: 40,
+        challenge_points_rate: 1,
+        updated_at: '',
+      }
+    }
+    return data as CreditSettings
+  },
+
+  async updateCreditSettings(patch: Partial<CreditSettings>): Promise<void> {
+    const { error } = await supabase!.from('credit_settings')
+      .update({ ...patch, updated_at: iso() }).eq('id', 1)
+    if (error) throw error
+  },
+
+  async listCreditLedger(userId?: string): Promise<CreditEntry[]> {
+    let q = supabase!.from('credit_ledger').select('*').order('created_at', { ascending: false })
+    if (userId) q = q.eq('user_id', userId)
+    const { data, error } = await q
+    if (error) return []
+    return (data || []) as CreditEntry[]
+  },
+
+  /** Admin grants credits directly. */
+  async grantCredits(userId: string, amount: number, note: string, adminId: string): Promise<void> {
+    const { error } = await supabase!.from('credit_ledger').insert({
+      user_id: userId,
+      delta: Math.abs(amount),
+      reason: 'admin_topup',
+      note: note || 'HQ top-up',
+      ref_id: `admin-${uuid()}`,
+    })
+    void adminId
+    if (error) throw error
+  },
+
+  /* ---------- REDEEM SHOP ---------- */
+  async listRedeemItems(): Promise<RedeemItem[]> {
+    const { data, error } = await supabase!
+      .from('redeem_items').select('*').order('created_at', { ascending: false })
+    if (error) return []
+    return (data || []) as RedeemItem[]
+  },
+
+  async createRedeemItem(item: Omit<RedeemItem, 'id' | 'created_at' | 'updated_at'>): Promise<void> {
+    const { error } = await supabase!.from('redeem_items').insert(item)
+    if (error) throw error
+  },
+
+  async updateRedeemItem(id: string, patch: Partial<RedeemItem>): Promise<void> {
+    const allowed = ['title', 'description', 'image_url', 'cost', 'stock', 'featured', 'active', 'codes']
+    const payload: Record<string, unknown> = { updated_at: iso() }
+    for (const k of allowed) if (k in patch) payload[k] = (patch as Record<string, unknown>)[k]
+    const { error } = await supabase!.from('redeem_items').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteRedeemItem(id: string): Promise<void> {
+    const { error } = await supabase!.from('redeem_items').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  async listRedemptions(userId?: string): Promise<Redemption[]> {
+    let q = supabase!.from('redemptions').select('*').order('created_at', { ascending: false })
+    if (userId) q = q.eq('user_id', userId)
+    const { data, error } = await q
+    if (error) return []
+    return (data || []) as Redemption[]
+  },
+
+  /** User redeems an item — atomic RPC; returns the voucher code. */
+  async redeemVoucher(itemId: string): Promise<string> {
+    const { data, error } = await supabase!.rpc('redeem_voucher', { p_item: itemId })
+    if (error) throw new Error(error.message)
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('cc-credits-changed'))
+    return String(data ?? '')
+  },
+
+  /** Convert bank-card points into global CC Credits — atomic RPC. */
+  async convertPoints(cardId: string, amount: number): Promise<number> {
+    const { data, error } = await supabase!.rpc('convert_points', { p_card: cardId, p_amount: amount })
+    if (error) throw new Error(error.message)
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('cc-credits-changed'))
+    return Number(data ?? 0)
+  },
+
+  async markRedemptionDelivered(id: string): Promise<void> {
+    const { error } = await supabase!.from('redemptions')
+      .update({ status: 'delivered', delivered_at: iso() }).eq('id', id)
     if (error) throw error
   },
 

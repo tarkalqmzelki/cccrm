@@ -55,6 +55,8 @@ export interface Company {
   city?: string
   /** Comma-separated services the lead is interested in (schema64). */
   services_offered?: string
+  /** Set when claimed from the Leads Marketplace (schema61/67). */
+  marketplace_source?: string | null
   created_by: string | null
   lead_status: LeadStatus
   lead_status_updated_at: string | null
@@ -676,6 +678,73 @@ export function maskCardNumber(num: string): string {
 export function formatCardNumber(num: string): string {
   const digits = (num || '').replace(/\D/g, '')
   return digits.replace(/(.{4})/g, '$1 ').trim() || '—'
+}
+
+/* =====================================================================
+ * TOKENIZATION — CC Credits (schema67)
+ * ===================================================================== */
+
+export interface CreditSettings {
+  id: number
+  credits_per_deal_submitted: number
+  credits_per_deal_approved: number
+  credits_per_offer_created: number
+  credits_per_lead_created: number
+  credits_per_mp_converted: number
+  challenge_points_rate: number
+  updated_at: string
+}
+
+export type CreditReason =
+  | 'deal_submitted' | 'deal_approved' | 'lead_created' | 'mp_converted'
+  | 'challenge' | 'conversion' | 'admin_topup' | 'adjust' | 'redeem'
+
+export const CREDIT_REASON_META: Record<CreditReason, { label: string }> = {
+  deal_submitted:   { label: 'Deal submitted' },
+  deal_approved:    { label: 'Deal approved' },
+  lead_created:     { label: 'Lead created' },
+  mp_converted:     { label: 'Marketplace conversion' },
+  challenge:        { label: 'Challenge completed' },
+  conversion:       { label: 'Converted points' },
+  admin_topup:      { label: 'HQ top-up' },
+  adjust:           { label: 'Adjustment' },
+  redeem:           { label: 'Redeemed' },
+}
+
+export interface CreditEntry {
+  id: string
+  user_id: string
+  delta: number
+  reason: CreditReason
+  note: string
+  ref_id: string | null
+  created_at: string
+}
+
+export interface RedeemItem {
+  id: string
+  title: string
+  description: string
+  image_url: string
+  cost: number
+  stock: number // -1 unlimited
+  featured: boolean
+  active: boolean
+  codes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Redemption {
+  id: string
+  item_id: string | null
+  user_id: string
+  item_title: string
+  cost: number
+  code: string
+  status: 'pending' | 'delivered'
+  delivered_at: string | null
+  created_at: string
 }
 
 export interface Settings {

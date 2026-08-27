@@ -9,6 +9,7 @@ import { Sun, Moon } from 'lucide-react'
 import { getTheme, toggleTheme, type Theme } from '../../lib/theme'
 import { db } from '../../lib/db'
 import { CommandPalette } from '../CommandPalette'
+import { CreditsPill } from '../CreditsBadge'
 import { useAsync } from '../../lib/hooks/useAsync'
 import type { InboxMessage, AccessRequest, Deal } from '../../lib/types'
 import { dateShort } from '../../lib/format'
@@ -66,6 +67,9 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
         {/* Right cluster: theme toggle + mobile search + notifications bell. */}
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2 lg:ml-0">
+          {/* CC Credits — members only, desktop top-right */}
+          <CreditsPill />
+
           {/* Theme toggle — sun/moon, applies to all users */}
           <ThemeToggle />
 

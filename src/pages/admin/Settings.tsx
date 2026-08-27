@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette, Languages, Globe, Swords, Store, CreditCard } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette, Languages, Globe, Swords, Store, CreditCard, Coins } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { useAuth } from '../../context/AuthContext'
@@ -25,12 +25,15 @@ import { PlatformLocaleManager } from '../../components/PlatformLocaleManager'
 import { ChallengesManager } from '../../components/ChallengesManager'
 import { MarketplaceManager } from '../../components/marketplace/MarketplaceManager'
 import { BankCardsManager } from '../../components/bank/BankCardsManager'
+import { TokenizationAdmin } from '../../components/bank/TokenizationAdmin'
+import { RedeemItemsManager } from '../../components/bank/RedeemItemsManager'
 
 type Category =
   | 'commissions'
   | 'challenges'
   | 'lead-marketplace'
   | 'bank-cards'
+  | 'tokenization'
   | 'design'
   | 'locales'
   | 'languages'
@@ -58,6 +61,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'challenges',        label: 'Challenges',        icon: Swords,     group: 'Gamification' },
   { id: 'lead-marketplace',  label: 'Lead Marketplace',  icon: Store,      group: 'Gamification' },
   { id: 'bank-cards',        label: 'Bank Cards',        icon: CreditCard, group: 'Gamification' },
+  { id: 'tokenization',      label: 'Tokenization',      icon: Coins,      group: 'Gamification' },
   { id: 'design',            label: 'Design Settings',   icon: Palette,    group: 'Commissions' },
   { id: 'locales',           label: 'Platform Locales',  icon: Globe,      group: 'Commissions' },
   { id: 'languages',         label: 'Language Settings', icon: Languages,  group: 'Commissions' },
@@ -79,6 +83,7 @@ const CATEGORY_TITLE: Record<Category, { title: string; desc: string }> = {
   challenges:        { title: 'Challenges',                       desc: 'Create quests and push them to every member — auto-checked functional goals or self-reported regular ones, with points and optional cash bonuses.' },
   'lead-marketplace': { title: 'Lead Marketplace',                desc: 'Feed the team a pool of companies. Import via JSON (same shape as creating a lead), publish in bulk, set claim timers, or allocate directly to one person.' },
   'bank-cards':      { title: 'Bank Cards',                       desc: 'Issue fully-manual virtual cards to members, record categorized top-ups and spends, freeze cards. Members see everything on their Bank page.' },
+  tokenization:      { title: 'Tokenization — CC Credits',        desc: 'Set how members earn CC Credits from platform events, and fulfill their shop redemptions.' },
   design:            { title: 'Design settings',                 desc: 'Platform-wide branding — logo URLs for light and dark mode, shown in the sidebar and on the login page.' },
   locales:           { title: 'Platform locales',               desc: 'Translate the platform interface (nav, buttons, labels) into multiple languages. Users pick their locale from Profile Settings.' },
   languages:         { title: 'Language settings',               desc: 'Translate every fixed label on printed invoices and contracts. Add a language, translate the entries, pick it when generating documents.' },
@@ -262,7 +267,18 @@ export default function SettingsPage() {
           {active === 'lead-marketplace' && <MarketplaceManager adminId={user?.id || ''} />}
 
           {/* ---------- Bank Cards ---------- */}
-          {active === 'bank-cards' && <BankCardsManager adminId={user?.id || ''} />}
+          {active === 'bank-cards' && (
+            <div className="space-y-8">
+              <BankCardsManager adminId={user?.id || ''} />
+              <div className="border-t border-line pt-6">
+                <h3 className="mb-4 text-lg font-semibold tracking-tight">Redeem items</h3>
+                <RedeemItemsManager />
+              </div>
+            </div>
+          )}
+
+          {/* ---------- Tokenization ---------- */}
+          {active === 'tokenization' && <TokenizationAdmin />}
 
           {/* ---------- Design settings ---------- */}
           {active === 'design' && (

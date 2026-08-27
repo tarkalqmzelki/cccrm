@@ -109,6 +109,7 @@ export default function MarketplacePage() {
       logo_url: l.logo_url,
       summary: l.summary,
       phone: l.phone || '',
+      marketplace_source: l.id,
       created_by: user.id,
     })
     try {
