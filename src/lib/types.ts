@@ -1072,6 +1072,10 @@ export interface DesignSettings {
   id: number
   logo_url_light: string
   logo_url_dark: string
+  /** Uploaded custom UI font (public URL, schema69). */
+  font_url: string
+  /** Global letter-spacing in em (schema69). */
+  font_letter_spacing: number
   updated_at: string
 }
 
@@ -1079,6 +1083,8 @@ export const DEFAULT_DESIGN_SETTINGS: DesignSettings = {
   id: 1,
   logo_url_light: '',
   logo_url_dark: '',
+  font_url: '',
+  font_letter_spacing: 0,
   updated_at: '',
 }
 

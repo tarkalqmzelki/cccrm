@@ -63,7 +63,7 @@ export function CareerCard({
             </span>
           </div>
           <div className="min-w-0">
-            <p className="text-2xs font-bold uppercase tracking-[0.14em] text-white/50">Player card</p>
+            <p className="text-2xs font-bold uppercase tracking-[0.14em] text-white/50">Seller card</p>
             <p className="truncate text-lg font-bold leading-tight">{name}</p>
             <p className="text-xs capitalize text-white/60">{role}</p>
           </div>

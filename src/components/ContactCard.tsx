@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Phone, Mail, Lock, Unlock, MessageSquare, UserRound, ShieldCheck } from 'lucide-react'
+import { Phone, Mail, Lock, Unlock, MessageSquare, UserRound, ShieldCheck, Pencil } from 'lucide-react'
 import { Avatar } from './ui/Avatar'
 import { Button } from './ui/Button'
 import { Modal } from './ui/Modal'
@@ -8,16 +8,23 @@ import { Input, Field } from './ui/Input'
 import { Badge } from './ui/Badge'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { openContextMenu } from './ui/ContextMenu'
 import { db } from '../lib/db'
 import type { Contact } from '../lib/types'
 
 type UnlockMode = 'owner_uid' | 'assignee' | 'admin'
 
-export function ContactCard({ contact, ownerId, canUnlock, unlocked }: {
+export function ContactCard({ contact, ownerId, canUnlock, unlocked, canEditName, onSaveName }: {
   contact: Contact
   ownerId: string
   canUnlock: boolean
   unlocked?: boolean
+  /** Explicit permission to rename (lead owner / admin). When unset,
+   *  falls back to contact-creator or admin. */
+  canEditName?: boolean
+  /** Provided for synthetic rows (e.g. company phone card): persists the
+   *  renamed contact instead of calling updateContact. */
+  onSaveName?: (name: string) => Promise<void>
 }) {
   const { user } = useAuth()
   const { push } = useToast()
@@ -27,9 +34,43 @@ export function ContactCard({ contact, ownerId, canUnlock, unlocked }: {
   const [verifying, setVerifying] = useState(false)
   const [assigneeName, setAssigneeName] = useState<string | null>(null)
 
+  /* Inline name editing — lead owner or admin */
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState(contact.full_name)
+  const [savingName, setSavingName] = useState(false)
+
   const isOwner = user?.id === ownerId || user?.id === contact.created_by
   const isAdmin = user?.role === 'admin'
   const showFull = isOwner || isAdmin || revealed || unlocked
+  const isSynth = contact.id.startsWith('__')
+  const nameEditable = onSaveName
+    ? !!canEditName
+    : (canEditName ?? (isOwner || isAdmin)) && !isSynth
+
+  function startEditName() { setNameDraft(contact.full_name); setEditingName(true) }
+
+  async function saveName() {
+    const v = nameDraft.trim()
+    if (!v) { push({ tone: 'error', title: 'Name cannot be empty' }); return }
+    setSavingName(true)
+    try {
+      if (onSaveName) {
+        await onSaveName(v)
+      } else {
+        await db.updateContact(contact.id, { full_name: v })
+      }
+      push({ tone: 'success', title: 'Contact name updated' })
+      setEditingName(false)
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not update name', desc: e?.message })
+    } finally { setSavingName(false) }
+  }
+
+  function onContext(e: React.MouseEvent) {
+    if (!nameEditable) return
+    e.preventDefault()
+    openContextMenu(e, [{ label: 'Edit name', icon: <Pencil size={14} strokeWidth={1.75} />, onClick: startEditName }])
+  }
 
   function blurName(name: string) {
     if (!name || showFull) return name
@@ -94,13 +135,43 @@ export function ContactCard({ contact, ownerId, canUnlock, unlocked }: {
 
   return (
     <>
-      <div className="flex items-start gap-3 rounded-xl border border-line p-3">
+      <div
+        className="flex items-start gap-3 rounded-xl border border-line p-3"
+        onContextMenu={nameEditable ? onContext : undefined}
+      >
         {/* Avatar always blurred for non-owners */}
         <div className={showFull ? '' : 'blur-sm select-none'}>
           <Avatar name={contact.full_name || '?'} size={36} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{blurName(contact.full_name) || 'Unnamed'}</p>
+          {editingName ? (
+            <div className="flex items-center gap-1.5" data-no-drag>
+              <Input
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void saveName(); if (e.key === 'Escape') setEditingName(false) }}
+                autoFocus
+                className="h-8 py-1 text-sm"
+              />
+              <Button size="sm" onClick={() => void saveName()} disabled={savingName} className="shrink-0 !px-2">
+                {savingName ? '…' : '✓'}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingName(false)} className="shrink-0 !px-2">✕</Button>
+            </div>
+          ) : (
+            <p className="flex items-center gap-1.5 text-sm font-medium truncate">
+              <span className="truncate">{blurName(contact.full_name) || 'Unnamed'}</span>
+              {nameEditable && showFull && (
+                <button
+                  onClick={startEditName}
+                  title="Edit name"
+                  className="shrink-0 rounded-md p-1 text-ink-300 transition-colors hover:bg-ink-50 hover:text-ink dark:hover:bg-[rgb(28,28,28)]"
+                >
+                  <Pencil size={11} strokeWidth={1.75} />
+                </button>
+              )}
+            </p>
+          )}
           {contact.role && <p className="text-2xs text-ink-400 truncate">{contact.role}</p>}
           <div className="mt-1.5 space-y-0.5">
             {contact.phone && (

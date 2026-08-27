@@ -141,12 +141,6 @@ export default function CompanyDetail() {
               {company.website && <span className="flex items-center gap-1"><Globe size={13} strokeWidth={1.75} /> {company.website}</span>}
               {company.industry && <span className="flex items-center gap-1"><Briefcase size={13} strokeWidth={1.75} /> {company.industry}</span>}
               {company.address && <span className="flex items-center gap-1"><MapPin size={13} strokeWidth={1.75} /> {company.address}</span>}
-              {/* Marketplace phone — visible to the lead's owner and admins only */}
-              {(company as { phone?: string }).phone && canEditCompany && (
-                <a href={`tel:${(company as { phone?: string }).phone!.replace(/\s+/g, '')}`} className="flex items-center gap-1 font-medium text-pos">
-                  📞 {(company as { phone?: string }).phone}
-                </a>
-              )}
             </div>
           </div>
         </div>
@@ -272,22 +266,71 @@ export default function CompanyDetail() {
       {tab === 'contacts' && (
         <Card>
           <CardHeader title="Contacts" desc="Contact details require access" action={canEditCompany ? <Button size="sm" variant="secondary" icon={<Plus size={14} strokeWidth={1.75} />} onClick={() => setAddContactOpen(true)}>Add</Button> : undefined} />
-          {contacts.length === 0 ? (
+          {contacts.length === 0 && !(canEditCompany && (company as { phone?: string }).phone) ? (
             <p className="py-8 text-center text-sm text-ink-400">No contacts yet.</p>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {contacts.map((c) => {
-                const isMine = c.created_by === user?.id || isAdmin || hasCompanyAccess
-                if (isMine) return <ContactCard key={c.id} contact={c} ownerId={c.created_by || ''} canUnlock={false} unlocked={true} />
-                return (
-                  <LockedRow key={c.id} ownerId={c.created_by || ''} ownerName={profileMap[c.created_by || '']?.full_name || ''} companyId={company.id} onGranted={() => reload()}>
-                    <div className="pointer-events-none select-none blur-md opacity-40 flex items-start gap-3">
-                      <div className="h-9 w-9 rounded-full bg-ink-100" />
-                      <div className="flex-1"><p className="text-sm font-medium">{c.full_name}</p><p className="text-2xs text-ink-400">{c.role}</p></div>
-                    </div>
-                  </LockedRow>
-                )
-              })}
+              {(() => {
+                /* Legacy claimed leads keep their phone on the company
+                   record — surface it as a contact-style card (owner/admin). */
+                const digits = (c: { phone?: string }) => (c.phone || '').replace(/\D/g, '')
+                const companyPhone = (company as { phone?: string }).phone || ''
+                const hasIt = contacts.some((c) => digits(c) && digits(c) === digits({ phone: companyPhone }))
+                const rows: Contact[] = [...contacts]
+                if (canEditCompany && companyPhone && !hasIt) {
+                  rows.unshift({
+                    __synth: true,
+                    id: '__company_phone__',
+                    company_id: company.id,
+                    full_name: 'Main line',
+                    email: '',
+                    phone: companyPhone,
+                    role: 'From marketplace claim',
+                    linkedin: '',
+                    created_by: company.created_by,
+                    created_at: company.created_at,
+                    updated_at: company.updated_at,
+                  } as unknown as Contact)
+                }
+                return rows.map((row) => {
+                  const c = row as Contact
+                  const isSynth = (row as any).__synth === true
+                  const isMine = isSynth || c.created_by === user?.id || isAdmin || hasCompanyAccess
+                  if (isMine) {
+                    return (
+                      <ContactCard
+                        key={c.id}
+                        contact={c}
+                        ownerId={c.created_by || ''}
+                        canUnlock={false}
+                        unlocked={true}
+                        canEditName={canEditCompany || c.created_by === user?.id}
+                        onSaveName={isSynth
+                          ? async (name) => {
+                              await db.createContact({
+                                company_id: company.id,
+                                full_name: name,
+                                email: '',
+                                phone: (company as { phone?: string }).phone || '',
+                                role: 'From marketplace claim',
+                                created_by: user?.id || company.created_by || '',
+                              })
+                              reload()
+                            }
+                          : undefined}
+                      />
+                    )
+                  }
+                  return (
+                    <LockedRow key={c.id} ownerId={c.created_by || ''} ownerName={profileMap[c.created_by || '']?.full_name || ''} companyId={company.id} onGranted={() => reload()}>
+                      <div className="pointer-events-none select-none blur-md opacity-40 flex items-start gap-3">
+                        <div className="h-9 w-9 rounded-full bg-ink-100" />
+                        <div className="flex-1"><p className="text-sm font-medium">{c.full_name}</p><p className="text-2xs text-ink-400">{c.role}</p></div>
+                      </div>
+                    </LockedRow>
+                  )
+                })
+              })()}
             </div>
           )}
         </Card>

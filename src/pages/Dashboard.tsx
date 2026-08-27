@@ -13,10 +13,11 @@ import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { PageContainer } from '../components/layout/AppShell'
 import { STATUS_META, DEFAULT_SETTINGS } from '../lib/types'
-import type { Deal, Profile, Company, Payout, Referral, Settings } from '../lib/types'
+import type { Deal, Profile, Company, Payout, Referral, Settings, BankCard, BankTransaction } from '../lib/types'
 import type { SellerStats } from '../lib/gamification'
 import { leaderboard, periodStats, revenueSeries, grossVolume, effectiveLevel } from '../lib/metrics'
-import { buildBoard, careerTotals, periodWindow, rankRows, tierProgress, xpOf } from '../lib/gamification'
+import { buildBoard, careerTotals, periodWindow, rankRows, tierProgress } from '../lib/gamification'
+import { bankCardBalance } from '../lib/gamification'
 import { eur, delta } from '../lib/format'
 import { ActivityRings } from '../components/ui/ActivityRings'
 import { CareerCard } from '../components/dashboard/CareerCard'
@@ -348,11 +349,25 @@ function SellerHome({ user, data, loading }: { user: Profile; data: any; loading
   const claimsQ = useAsync(async () => db.listMarketLeads(), [])
   const claimedCount = (claimsQ.data || []).filter((l) => l.claimed_by === user.id).length
 
+  /* Convertible bank points — feeds the career-card pts pill */
+  const bankQ = useAsync(async () => {
+    if (!user) return { cards: [] as BankCard[], txs: [] as BankTransaction[] }
+    const cards = await db.listBankCardsForUser(user.id)
+    const txs = cards.length ? await db.listBankTransactions(cards.map((c) => c.id)) : []
+    return { cards, txs }
+  }, [user?.id])
+  const bankPoints = useMemo(() => {
+    const { cards, txs } = bankQ.data || { cards: [], txs: [] }
+    return cards.reduce((s, c) => s + bankCardBalance(c, txs.filter((t) => t.card_id === c.id)), 0)
+  }, [bankQ.data])
+
   /* Weekly digest → inbox (once per ISO week per user). A friendly
    * Monday-morning recap of rank, gaps, money and quests. */
   const digestTried = useRef(false)
   useEffect(() => {
     if (!data || !user || digestTried.current) return
+    /* Monday-only delivery — the recap lands once a week, on Mondays. */
+    if (new Date().getDay() !== 1) { digestTried.current = true; return }
     const wk = isoWeekKey(new Date())
     const storeKey = `digest:seen:${user.id}:${wk}`
     let seen = false
@@ -412,7 +427,7 @@ function SellerHome({ user, data, loading }: { user: Profile; data: any; loading
         nextLevel={tier.nextLevel}
         tierPct={tier.pct}
         remainingRevenue={tier.remaining}
-        xp={xpOf(careerStats)}
+        xp={Math.round(bankPoints)}
         monthRank={myMonthRow?.rank ?? null}
         boardSize={monthRows.length}
         streakMonths={streakMonths}

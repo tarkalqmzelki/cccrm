@@ -232,7 +232,6 @@ export default function Bank() {
                     </div>
                     <div className="text-right">
                       <p className="num text-2xs text-white/80">{active.expiry || '—'} · CVV {active.cvv || '—'}</p>
-                      <p className="text-sm font-black uppercase italic tracking-wider text-white/90">{active.brand}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -619,10 +618,16 @@ function ReviewRow({ label, value, bold, mono }: { label: string; value: string;
 
 function MiniStat({ tone, label, value, icon }: { tone: string; label: string; value: string; icon: React.ReactNode }) {
   return (
-    <div className="rounded-xl bg-gradient-to-br p-[1px]" style={{ backgroundImage: `linear-gradient(135deg, ${tone}55, transparent 60%)` }}>
-      <div className="rounded-[11px] bg-surface px-3 py-2">
+    <div className="liquid-tile relative">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ background: `linear-gradient(150deg, ${tone}2E 0%, transparent 55%), radial-gradient(120% 90% at 100% 100%, ${tone}1a 0%, transparent 62%)` }}
+      />
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+      <div className="relative px-3 py-2.5">
         <p className="flex items-center gap-1 text-2xs font-bold" style={{ color: tone }}>{icon} {label}</p>
-        <p className="num mt-0.5 text-lg font-extrabold" style={{ color: tone }}>{value}</p>
+        <p className="num mt-1 text-xl font-extrabold" style={{ color: tone }}>{value}</p>
       </div>
     </div>
   )

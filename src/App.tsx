@@ -1,8 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { useAuth } from './context/AuthContext'
 import { AppShell } from './components/layout/AppShell'
 import { ContextMenuHost } from './components/ui/ContextMenu'
+import { FontLoader } from './components/FontLoader'
 import { PortraitOnlyOverlay } from './components/PortraitOnlyOverlay'
 import Login from './pages/Login'
 import InvoiceVerifyPage from './pages/InvoiceVerifyPage'
@@ -49,6 +50,27 @@ function FullLoader() {
   )
 }
 
+/** Block every browser page-zoom path (pinch, double-tap, ctrl+wheel)
+ *  so the platform feels like a native app. The world map runs its own
+ *  zoom, unaffected — that lives inside an element handler. */
+function useNoPageZoom() {
+  useEffect(() => {
+    const gesture = (e: Event) => e.preventDefault()
+    const wheel = (e: WheelEvent) => { if (e.ctrlKey) e.preventDefault() }
+    const dbl = (e: MouseEvent) => e.preventDefault()
+    document.addEventListener('gesturestart', gesture)
+    document.addEventListener('gesturechange', gesture)
+    document.addEventListener('wheel', wheel, { passive: false })
+    document.addEventListener('dblclick', dbl)
+    return () => {
+      document.removeEventListener('gesturestart', gesture)
+      document.removeEventListener('gesturechange', gesture)
+      document.removeEventListener('wheel', wheel)
+      document.removeEventListener('dblclick', dbl)
+    }
+  }, [])
+}
+
 function Shell() {
   return (
     <AppShell>
@@ -81,6 +103,7 @@ function Shell() {
 }
 
 export default function App() {
+  useNoPageZoom()
   return (
     <BrowserRouter>
       <Routes>
@@ -98,6 +121,7 @@ export default function App() {
         />
       </Routes>
       <ContextMenuHost />
+      <FontLoader />
       {/* Phones should stay portrait — show a rotate-back overlay when
           the user tilts into landscape on a phone-sized viewport. */}
       <PortraitOnlyOverlay />

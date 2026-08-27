@@ -112,6 +112,19 @@ export default function MarketplacePage() {
       marketplace_source: l.id,
       created_by: user.id,
     })
+    // The phone lives where it belongs — inside the Contacts section.
+    if (l.phone) {
+      try {
+        await db.createContact({
+          company_id: company.id,
+          full_name: 'Primary contact',
+          email: '',
+          phone: l.phone,
+          role: 'Marketplace lead',
+          created_by: user.id,
+        })
+      } catch { /* non-fatal — phone is also on the company record */ }
+    }
     try {
       await db.claimMarketLead(l.id, user.id)
     } catch (e) {

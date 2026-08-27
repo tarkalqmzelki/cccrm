@@ -1,6 +1,9 @@
-import type { Deal, Level, Payout, Profile, Referral, Settings, RuleFlow, FlowNode } from './types'
+import type { Deal, Level, Payout, Profile, Referral, Settings, RuleFlow, FlowNode, BankCard, BankTransaction } from './types'
 import { FLOW_METRIC_LABEL } from './types'
 import { effectiveLevel } from './metrics'
+
+/** Balance of a bank card in points (re-exported convenience). */
+export { bankCardBalance } from './types'
 
 /* =====================================================================
  * GAMIFICATION ENGINE — pure functions over existing CRM data.

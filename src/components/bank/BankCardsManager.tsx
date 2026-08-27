@@ -16,10 +16,14 @@ import { Modal } from '../ui/Modal'
 import { Badge } from '../ui/Badge'
 import { Skeleton } from '../ui/Skeleton'
 import { EmptyState } from '../ui/EmptyState'
+import { DateTimePicker } from '../ui/DateTimePicker'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { ProfileCombobox } from '../marketplace/ProfileCombobox'
 import { useToast } from '../../context/ToastContext'
 import { eur, eurFull, dateShort } from '../../lib/format'
+
+/** Points formatter — card ledgers are denominated in points, not euros. */
+const pts = (n: number) => `${Math.round(n).toLocaleString('en')} pts`
 
 /**
  * Admin control room for member bank cards — issue fully-manual virtual
@@ -82,8 +86,8 @@ export function BankCardsManager({ adminId }: { adminId: string }) {
       {/* Stats */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MiniStat label="Cards issued" value={String(cards.length)} icon={<CreditCard size={14} strokeWidth={2} />} tone="#f59e0b" />
-        <MiniStat label="Total balance" value={eur(totalBalance)} icon={<Wallet size={14} strokeWidth={2} />} tone="#fbbf24" />
-        <MiniStat label="Spent this month" value={eur(spentThisMonth)} icon={<ArrowUpFromLine size={14} strokeWidth={2} />} tone="#fb923c" />
+        <MiniStat label="Total balance" value={pts(totalBalance)} icon={<Wallet size={14} strokeWidth={2} />} tone="#fbbf24" />
+        <MiniStat label="Spent this month" value={pts(spentThisMonth)} icon={<ArrowUpFromLine size={14} strokeWidth={2} />} tone="#fb923c" />
         <MiniStat label="Frozen" value={String(frozenCount)} icon={<Snowflake size={14} strokeWidth={2} />} tone="#38bdf8" />
       </div>
 
@@ -131,7 +135,7 @@ export function BankCardsManager({ adminId }: { adminId: string }) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-2xs font-semibold uppercase tracking-wide text-ink-400">Available</p>
-                      <p className="num text-xl font-extrabold">{eur(bal)}</p>
+                      <p className="num text-xl font-extrabold">{pts(bal)}</p>
                     </div>
                     <Badge tone={c.frozen ? 'info' : 'pos'} dot>{c.frozen ? 'Frozen' : 'Active'}</Badge>
                   </div>
@@ -405,7 +409,7 @@ function LedgerModal({
           <div className="rounded-xl bg-gradient-to-br from-amber-400/20 to-transparent p-[1px]">
             <div className="flex items-center justify-between rounded-[11px] bg-surface px-4 py-3">
               <p className="text-2xs font-bold uppercase tracking-wider text-ink-400">Current balance</p>
-              <p className="num text-xl font-extrabold text-amber-500 dark:text-amber-400">{eur(balance)}</p>
+              <p className="num text-xl font-extrabold text-amber-500 dark:text-amber-400">{pts(balance)}</p>
             </div>
           </div>
 
@@ -422,8 +426,8 @@ function LedgerModal({
               size="sm"
             />
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field label="Amount (€)">
-                <Input type="number" step="0.01" min={0} value={amount || ''} onChange={(e) => setAmount(Number(e.target.value))} className="num" />
+              <Field label="Amount (pts)" hint="Points — converted to CC Credits by the member">
+                <Input type="number" min={0} value={amount || ''} onChange={(e) => setAmount(Number(e.target.value))} className="num" />
               </Field>
               <Field label="Category">
                 <select value={category} onChange={(e) => setCategory(e.target.value)} className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-line bg-surface px-3 text-sm">
@@ -437,7 +441,7 @@ function LedgerModal({
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <Field label="Note"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" /></Field>
-              <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+              <Field label="Date"><DateTimePicker value={date} onChange={setDate} dateOnly /></Field>
             </div>
             <Button block className="mt-3" onClick={add} disabled={saving} icon={kind === 'topup' ? <ArrowDownToLine size={14} strokeWidth={1.75} /> : <ArrowUpFromLine size={14} strokeWidth={1.75} />}>
               Record {kind}
@@ -462,7 +466,7 @@ function LedgerModal({
                     <p className="truncate text-2xs text-ink-400 num">{dateShort(t.occurred_at)}{t.note ? ` · ${t.note}` : ''}</p>
                   </div>
                   <p className={`num shrink-0 text-sm font-bold ${t.kind === 'topup' ? 'text-pos' : 'text-warn'}`}>
-                    {t.kind === 'topup' ? '+' : '−'}{eurFull(t.amount)}
+                    {t.kind === 'topup' ? '+' : '−'}{pts(t.amount)}
                   </p>
                   <button onClick={() => remove(t)} title="Delete" className="shrink-0 rounded-lg p-1.5 text-ink-300 transition-colors hover:bg-negBg hover:text-neg">
                     <Trash2 size={13} strokeWidth={1.75} />

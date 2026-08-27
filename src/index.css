@@ -10,6 +10,11 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: light;
 
+  /* Platform typography — FontLoader overrides these when the admin
+     uploads a custom font (printable documents stay untouched). */
+  --app-font: 'Inter', 'Geist', system-ui, sans-serif;
+  --app-ls: 0em;
+
   /* ink scale — light mode (dark text on light bg) */
   --ink: 10 10 10;
   --ink-50: 245 245 245;
@@ -102,14 +107,31 @@ body,
   height: 100%;
 }
 
+/* Native-app feel: block pinch-zoom, double-tap zoom and ctrl+wheel
+   page zoom everywhere (the world map manages its own zoom). */
+html {
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
-  font-family: 'Inter', 'Geist', system-ui, sans-serif;
+  font-family: var(--app-font);
+  letter-spacing: var(--app-ls);
   background: rgb(var(--canvas));
   color: rgb(var(--ink));
   font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overscroll-behavior-y: none;
+}
+
+/* Printable documents keep their own typography — the custom UI font
+   never leaks into invoices/contracts/balance sheets. */
+.print-document,
+.print-document * {
+  font-family: 'Inter', 'Geist', system-ui, sans-serif !important;
+  letter-spacing: 0 !important;
 }
 
 @layer base {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { geoNaturalEarth1, geoCentroid, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
@@ -12,7 +12,7 @@ import { Card, CardHeader } from '../components/ui/Card'
 import { Skeleton } from '../components/ui/Skeleton'
 import { Modal } from '../components/ui/Modal'
 import { Badge } from '../components/ui/Badge'
-import { Crosshair } from 'lucide-react'
+import { Crosshair, Plus, Minus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { eur } from '../lib/format'
 import { aggregateCountries, type GeoDealInput, type GeoLeadInput } from '../lib/geo'
@@ -52,9 +52,38 @@ export default function MapPage() {
 
   /* Pan state — pointer drag moves the map horizontally */
   const [panX, setPanX] = useState(0)
+  const [zoom, setZoom] = useState(1)
   const panState = useRef<{ active: boolean; startX: number; startPan: number; moved: boolean }>({
     active: false, startX: 0, startPan: 0, moved: false,
   })
+
+  /* Zoom — buttons + cursor-anchored wheel zoom */
+  function zoomAt(screenXInContainer: number, factor: number) {
+    const z2 = Math.max(1, Math.min(5, zoom * factor))
+    if (z2 === zoom) return
+    const rect = containerRef.current?.getBoundingClientRect()
+    const sx = screenXInContainer - (rect?.left ?? 0)
+    setPanX((p) => {
+      const c = (sx - p) / zoom
+      const np = sx - c * z2
+      return Math.max(-MAX_PAN * 2, Math.min(MAX_PAN * 2, np))
+    })
+    setZoom(z2)
+  }
+
+  /* Non-passive wheel zoom */
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      zoomAt(e.clientX - rect.left, Math.exp(-e.deltaY * 0.0015))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom])
 
   /* Drill-down */
   const [drill, setDrill] = useState<string | null>(null)
@@ -154,7 +183,7 @@ export default function MapPage() {
           </p>
         </div>
         <button
-          onClick={() => setPanX(0)}
+          onClick={() => { setPanX(0); setZoom(1) }}
           title="Recenter map"
           className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-medium transition-colors hover:bg-ink-50"
         >
@@ -183,7 +212,7 @@ export default function MapPage() {
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
           >
-            <motion.div animate={{ x: panX }} transition={{ type: 'spring', stiffness: 500, damping: 40 }}>
+            <motion.div animate={{ x: panX, scale: zoom }} transition={{ type: 'spring', stiffness: 500, damping: 40 }} style={{ transformOrigin: '50% 50%' }}>
               <svg
                 viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
                 className="h-auto w-full min-w-[680px] select-none"
@@ -277,6 +306,17 @@ export default function MapPage() {
               <span>More leads</span>
               <span className="mx-1 h-3 w-px bg-line" />
               <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> Won deals</span>
+            </div>
+
+            {/* Zoom controls */}
+            <div className="absolute bottom-3 right-3 flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-glass">
+              <button onClick={() => zoomAt((containerRef.current?.clientWidth ?? 400) / 2, 1.3)} title="Zoom in" className="grid h-9 w-9 place-items-center text-ink transition-colors hover:bg-ink-50 dark:hover:bg-[rgb(28,28,28)]">
+                <Plus size={15} strokeWidth={2} />
+              </button>
+              <span className="mx-auto h-px w-5 bg-line" />
+              <button onClick={() => zoomAt((containerRef.current?.clientWidth ?? 400) / 2, 1 / 1.3)} title="Zoom out" className="grid h-9 w-9 place-items-center text-ink transition-colors hover:bg-ink-50 dark:hover:bg-[rgb(28,28,28)]">
+                <Minus size={15} strokeWidth={2} />
+              </button>
             </div>
           </div>
         )}

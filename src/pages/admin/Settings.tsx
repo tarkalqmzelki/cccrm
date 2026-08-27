@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette, Languages, Globe, Swords, Store, CreditCard, Coins } from 'lucide-react'
+import { Save, RotateCcw, Activity, AlertTriangle, Wrench, CheckCircle2, Bell, BookOpen, FileText, Settings2, Sparkles, BookMarked, Megaphone, FileText as InvoiceIcon, Palette, Languages, Globe, Swords, Store, CreditCard, Coins, Upload } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
 import { useAuth } from '../../context/AuthContext'
@@ -27,6 +27,8 @@ import { MarketplaceManager } from '../../components/marketplace/MarketplaceMana
 import { BankCardsManager } from '../../components/bank/BankCardsManager'
 import { TokenizationAdmin } from '../../components/bank/TokenizationAdmin'
 import { RedeemItemsManager } from '../../components/bank/RedeemItemsManager'
+import { applyTypography } from '../../components/FontLoader'
+import { supabase } from '../../lib/supabase'
 
 type Category =
   | 'commissions'
@@ -708,24 +710,44 @@ function DesignSettingsPanel() {
   const { data, loading } = useAsync(async () => db.getDesignSettings(), [])
   const [form, setForm] = useState<DesignSettings>(DEFAULT_DESIGN_SETTINGS)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
-    if (data) setForm(data)
+    if (data) { setForm(data); applyTypography(data) }
   }, [data])
 
   async function save() {
     setSaving(true)
     try {
+      const saved = { ...form } as DesignSettings
       await db.updateDesignSettings({
         logo_url_light: form.logo_url_light,
         logo_url_dark: form.logo_url_dark,
+        font_url: form.font_url,
+        font_letter_spacing: form.font_letter_spacing,
       })
-      push({ tone: 'success', title: 'Design settings saved', desc: 'Logo will update across the platform.' })
+      applyTypography(saved)
+      push({ tone: 'success', title: 'Design settings saved', desc: 'Logo & typography update across the platform for everyone.' })
     } catch (e: any) {
       push({ tone: 'error', title: 'Could not save', desc: e?.message })
     } finally {
       setSaving(false)
     }
+  }
+
+  async function uploadFont(file: File) {
+    if (!supabase) { push({ tone: 'error', title: 'Storage unavailable' }); return }
+    setUploading(true)
+    try {
+      const path = `fonts/${Date.now()}-${file.name.replace(/\s+/g, '-')}`
+      const { error } = await supabase.storage.from('design').upload(path, file, { upsert: true })
+      if (error) throw error
+      const { data } = supabase.storage.from('design').getPublicUrl(path)
+      setForm((f) => ({ ...f, font_url: data.publicUrl }))
+      push({ tone: 'success', title: 'Font uploaded', desc: 'Press Save design settings to apply it platform-wide.' })
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Font upload failed', desc: e?.message })
+    } finally { setUploading(false) }
   }
 
   if (loading) {
@@ -773,6 +795,78 @@ function DesignSettingsPanel() {
         <p className="mt-3 text-2xs text-ink-400">
           Leave blank to use the default Calista Concept logo. SVG is recommended for crisp rendering at any size.
         </p>
+      </Card>
+
+      {/* Typography — custom platform font */}
+      <Card className="mt-5">
+        <CardHeader title="Typography" desc="Upload a font file and it becomes the platform font for every member — across all pages. Printable documents (invoices, contracts, balance sheets) keep their own typography." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <p className="mb-1.5 text-sm font-medium">Font file</p>
+            <input
+              type="file"
+              accept=".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf"
+              className="hidden"
+              id="font-file-input"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void uploadFont(f)
+                e.target.value = ''
+              }}
+            />
+            <Button
+              variant="secondary"
+              onClick={() => document.getElementById('font-file-input')?.click()}
+              disabled={uploading}
+              icon={<Upload size={14} strokeWidth={1.75} />}
+            >
+              {uploading ? 'Uploading…' : form.font_url ? 'Replace font file' : 'Upload font file'}
+            </Button>
+            <p className="mt-1.5 text-2xs text-ink-400">.woff2 / .woff / .ttf / .otf — stored in the design bucket.</p>
+            {form.font_url && (
+              <div className="mt-2 flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
+                <span className="min-w-0 flex-1 truncate text-2xs num text-ink-500">{form.font_url.split('/').pop()}</span>
+                <button
+                  onClick={() => setForm((f) => ({ ...f, font_url: '' }))}
+                  className="shrink-0 text-2xs font-semibold text-neg hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <Field
+              label={`Letter spacing — ${form.font_letter_spacing.toFixed(3)}em`}
+              hint="Fine-tune the spacing between all letters platform-wide."
+            >
+              <input
+                type="range"
+                min={-0.05}
+                max={0.3}
+                step={0.005}
+                value={form.font_letter_spacing}
+                onChange={(e) => setForm((f) => ({ ...f, font_letter_spacing: Number(e.target.value) }))}
+                className="mt-2 w-full accent-[rgb(10,10,10)]"
+              />
+            </Field>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[-0.02, 0, 0.05, 0.1].map((v) => (
+                <button key={v} onClick={() => setForm((f) => ({ ...f, font_letter_spacing: v }))} className="rounded-full border border-line px-2.5 py-1 text-2xs font-medium num hover:bg-ink-50 dark:hover:bg-[rgb(28,28,28)]">
+                  {v > 0 ? `+${v}` : v}em
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Live preview */}
+        <div className="mt-4 rounded-xl border border-line bg-ink-50/60 p-4 dark:bg-transparent" style={{ fontFamily: form.font_url ? `'CalistaCustom', 'Inter', sans-serif` : undefined, letterSpacing: `${form.font_letter_spacing}em` }}>
+          <p className="text-2xs font-bold uppercase tracking-wider text-ink-400">Live preview</p>
+          <p className="mt-1 text-base font-semibold">The quick brown fox jumps over the lazy dog</p>
+          <p className="num mt-0.5 text-xs text-ink-400">0123456789 · €1,250.00 · leads@calistaconcept.eu</p>
+        </div>
       </Card>
 
       <div className="flex justify-end">
