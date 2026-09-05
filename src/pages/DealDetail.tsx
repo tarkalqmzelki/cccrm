@@ -70,7 +70,7 @@ export default function DealDetail() {
         tone: 'error',
         title: 'Could not update status',
         desc: msg.includes('deal_status')
-          ? 'Database trigger issue — run supabase/schema70.sql to fix it.'
+          ? 'Database trigger issue — run supabase/schema70.sql AND supabase/schema71.sql to fix it.'
           : msg,
       })
     } finally {
