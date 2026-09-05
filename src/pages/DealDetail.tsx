@@ -51,16 +51,31 @@ export default function DealDetail() {
   }, [deal, data])
   const [editOpen, setEditOpen] = useState(false)
   const [contactsUnlocked, setContactsUnlocked] = useState(false)
+  const [savingStatus, setSavingStatus] = useState(false)
 
   const canEdit = isAdmin || (deal?.status === 'pending_review')
   const canChangeStatus = isAdmin
   const isOwner = user?.id === deal?.seller_id
 
   async function setStatus(s: DealStatus) {
-    if (!deal) return
-    await db.updateDeal(deal.id, { status: s })
-    push({ tone: 'success', title: 'Status updated', desc: STATUS_META[s].label })
-    reload()
+    if (!deal || savingStatus) return
+    setSavingStatus(true)
+    try {
+      await db.updateDeal(deal.id, { status: s })
+      push({ tone: 'success', title: 'Status updated', desc: STATUS_META[s].label })
+      reload()
+    } catch (e: any) {
+      const msg = e?.message ?? ''
+      push({
+        tone: 'error',
+        title: 'Could not update status',
+        desc: msg.includes('deal_status')
+          ? 'Database trigger issue — run supabase/schema70.sql to fix it.'
+          : msg,
+      })
+    } finally {
+      setSavingStatus(false)
+    }
   }
 
   if (loading) {
@@ -125,12 +140,12 @@ export default function DealDetail() {
           )}
           {canChangeStatus && deal.status === 'pending_review' && (
             <>
-              <Button variant="secondary" className="flex-1 sm:flex-none" icon={<X size={15} strokeWidth={1.75} />} onClick={() => setStatus('rejected')}>Reject</Button>
-              <Button className="flex-1 sm:flex-none" icon={<Check size={15} strokeWidth={1.75} />} onClick={() => setStatus('approved')}>Approve</Button>
+              <Button variant="secondary" className="flex-1 sm:flex-none" disabled={savingStatus} icon={<X size={15} strokeWidth={1.75} />} onClick={() => setStatus('rejected')}>Reject</Button>
+              <Button className="flex-1 sm:flex-none" disabled={savingStatus} icon={<Check size={15} strokeWidth={1.75} />} onClick={() => setStatus('approved')}>{savingStatus ? 'Saving…' : 'Approve'}</Button>
             </>
           )}
           {canChangeStatus && (deal.status === 'approved' || deal.status === 'warm_call' || deal.status === 'to_be_finished' || deal.status === 'unfinished' || deal.status === 'cold_call') && (
-            <Button variant="primary" className="flex-1 sm:flex-none" icon={<Check size={15} strokeWidth={1.75} />} onClick={() => setStatus('closed')}>Close sale</Button>
+            <Button variant="primary" className="flex-1 sm:flex-none" disabled={savingStatus} icon={<Check size={15} strokeWidth={1.75} />} onClick={() => setStatus('closed')}>Close sale</Button>
           )}
           {canEdit && (
             <Button variant="secondary" className="flex-1 sm:flex-none" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
