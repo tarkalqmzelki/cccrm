@@ -52,8 +52,11 @@ export default function Challenges() {
         (x) => new Date(x.created_at).getTime() >= since && (team || x.created_by === user.id),
       ).length
     }
+    /* A deal only counts when it's been APPROVED by admins. */
     return platformQ.data.deals.filter(
-      (d) => new Date(d.created_at).getTime() >= since && (team || d.seller_id === user.id),
+      (d) => new Date(d.created_at).getTime() >= since
+        && (d.status === 'approved' || d.status === 'closed')
+        && (team || d.seller_id === user.id),
     ).length
   }
 
@@ -129,7 +132,11 @@ export default function Challenges() {
       }
     } else {
       for (const d of platformQ.data.deals) {
-        if (new Date(d.created_at).getTime() >= since && memberIds.includes(d.seller_id)) {
+        if (
+          new Date(d.created_at).getTime() >= since
+          && (d.status === 'approved' || d.status === 'closed')
+          && memberIds.includes(d.seller_id)
+        ) {
           map.set(d.seller_id, (map.get(d.seller_id) ?? 0) + 1)
         }
       }

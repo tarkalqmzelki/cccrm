@@ -92,9 +92,9 @@ export default function DealDetail() {
         <ArrowLeft size={15} strokeWidth={1.75} /> Deals
       </button>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-ink-50 text-ink">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-ink-50 text-ink">
             <Building2 size={20} strokeWidth={1.75} />
           </div>
           <div>
@@ -105,33 +105,35 @@ export default function DealDetail() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {canChangeStatus && (
-            <Dropdown
-              width={200}
-              trigger={
-                <div className="flex items-center gap-1.5 rounded-xl border border-line px-3 h-10 text-sm font-medium hover:bg-ink-50 transition-colors">
-                  Set status <ChevronDown size={14} strokeWidth={1.75} className="text-ink-400" />
-                </div>
-              }
-              items={ALL_STATUSES.map((s) => ({
-                label: STATUS_META[s].label,
-                onClick: () => setStatus(s),
-                disabled: deal.status === s,
-              }))}
-            />
+            <div className="w-full sm:w-auto">
+              <Dropdown
+                width={200}
+                trigger={
+                  <div className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-line px-3 h-10 text-sm font-medium hover:bg-ink-50 transition-colors sm:w-auto">
+                    Set status <ChevronDown size={14} strokeWidth={1.75} className="text-ink-400" />
+                  </div>
+                }
+                items={ALL_STATUSES.map((s) => ({
+                  label: STATUS_META[s].label,
+                  onClick: () => setStatus(s),
+                  disabled: deal.status === s,
+                }))}
+              />
+            </div>
           )}
           {canChangeStatus && deal.status === 'pending_review' && (
             <>
-              <Button variant="secondary" icon={<X size={15} strokeWidth={1.75} />} onClick={() => setStatus('rejected')}>Reject</Button>
-              <Button icon={<Check size={15} strokeWidth={1.75} />} onClick={() => setStatus('approved')}>Approve</Button>
+              <Button variant="secondary" className="flex-1 sm:flex-none" icon={<X size={15} strokeWidth={1.75} />} onClick={() => setStatus('rejected')}>Reject</Button>
+              <Button className="flex-1 sm:flex-none" icon={<Check size={15} strokeWidth={1.75} />} onClick={() => setStatus('approved')}>Approve</Button>
             </>
           )}
           {canChangeStatus && (deal.status === 'approved' || deal.status === 'warm_call' || deal.status === 'to_be_finished' || deal.status === 'unfinished' || deal.status === 'cold_call') && (
-            <Button variant="primary" icon={<Check size={15} strokeWidth={1.75} />} onClick={() => setStatus('closed')}>Close sale</Button>
+            <Button variant="primary" className="flex-1 sm:flex-none" icon={<Check size={15} strokeWidth={1.75} />} onClick={() => setStatus('closed')}>Close sale</Button>
           )}
           {canEdit && (
-            <Button variant="secondary" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
+            <Button variant="secondary" className="flex-1 sm:flex-none" icon={<Pencil size={15} strokeWidth={1.75} />} onClick={() => setEditOpen(true)}>Edit</Button>
           )}
         </div>
       </div>

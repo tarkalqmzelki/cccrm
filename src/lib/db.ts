@@ -282,6 +282,8 @@ export const db = {
     // Only send fields that are explicitly in the patch + updated_at
     const payload: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(patch)) {
+      // Defensive: an empty-string status would 400 on the deal_status enum
+      if (k === 'status' && (v === '' || v == null)) continue
       if (['lead_id','opportunity_id','company','contact_name','email','phone','website','meeting_place','gross_value','collected_amount','commission_pct','custom_commission_pct','status','notes','closed_at'].includes(k)) {
         payload[k] = v
       }
