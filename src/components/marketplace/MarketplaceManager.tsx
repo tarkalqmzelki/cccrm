@@ -472,7 +472,7 @@ function ImportModal({
 }) {
   const { push } = useToast()
   const [raw, setRaw] = useState('')
-  const [parsed, setParsed] = useState<{ ok: number; bad: number; dupes: number } | null>(null)
+  const [parsed, setParsed] = useState<{ ok: number; bad: number; oldIndustries: string[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [category, setCategory] = useState<string>('')
   const [useNew, setUseNew] = useState(false)
@@ -488,41 +488,30 @@ function ImportModal({
     try {
       const data = JSON.parse(raw)
       const arr = Array.isArray(data) ? data : [data]
-      let ok = 0, bad = 0, dupes = 0
+      let ok = 0, bad = 0
+      const oldIndustries = new Set<string>()
       for (const item of arr) {
         if (typeof item?.name === 'string' && item.name.trim()) {
-          const key = item.name.toLowerCase().trim()
-          if (existingNamesCheck(key)) dupes++
-          else ok++
+          ok++
+          if (effectiveCategory) {
+            const old = String(item.industry ?? '').trim()
+            if (old && old !== effectiveCategory) oldIndustries.add(old)
+          }
         } else bad++
       }
-      setParsed({ ok, bad, dupes })
+      setParsed({ ok, bad, oldIndustries: [...oldIndustries] })
+      // Apply the override INTO the preview so the admin sees the final data
+      if (effectiveCategory) {
+        const mapped = arr.map((item) =>
+          item && typeof item === 'object' ? { ...item, industry: effectiveCategory } : item,
+        )
+        setRaw(JSON.stringify(mapped, null, 2))
+      }
     } catch {
       push({ tone: 'error', title: 'Invalid JSON', desc: 'Paste an array of lead objects.' })
       setParsed(null)
     }
   }
-
-  function existingNamesCheck(key: string): boolean {
-    // Duplicate check happens against the live companies table at claim
-    // time (domain uniq) — here we just count JSON-internal duplicates.
-    return internalNames.has(key)
-  }
-  const internalNames = useMemo(() => {
-    try {
-      const data = JSON.parse(raw)
-      const arr = (Array.isArray(data) ? data : [data]) as Record<string, unknown>[]
-      const seen = new Set<string>(); let dupe = 0
-      for (const item of arr) {
-        const k = typeof item?.name === 'string' ? item.name.toLowerCase().trim() : ''
-        if (!k) continue
-        if (seen.has(k)) dupe++
-        seen.add(k)
-      }
-      void dupe
-      return seen
-    } catch { return new Set<string>() }
-  }, [raw])
 
   async function doImport() {
     if (!parsed || parsed.ok === 0) return
@@ -615,15 +604,29 @@ function ImportModal({
         </Field>
 
         {raw.trim() && (
-          <div className="flex items-center gap-2">
+          <div className="space-y-2">
             {!parsed ? (
               <Button variant="secondary" size="sm" icon={<CheckSquare size={13} strokeWidth={1.75} />} onClick={validate}>Validate</Button>
             ) : (
-              <p className="text-xs text-ink-400">
-                <span className="num font-bold text-pos">{parsed.ok} valid</span>
-                {parsed.bad > 0 && <> · <span className="num font-bold text-neg">{parsed.bad} invalid</span></>}
-                {effectiveCategory && <> · will be categorized as <span className="font-bold text-info">"{effectiveCategory}"</span></>}
-              </p>
+              <div className="space-y-1.5">
+                <p className="text-xs text-ink-400">
+                  <span className="num font-bold text-pos">{parsed.ok} lead{parsed.ok === 1 ? '' : 's'} ready to import</span>
+                  {parsed.bad > 0 && <> · <span className="num font-bold text-neg">{parsed.bad} invalid</span></>}
+                </p>
+                {parsed.oldIndustries.length > 0 && effectiveCategory && (
+                  <p className="text-2xs text-ink-400">
+                    Industry override applied on validate:
+                    {parsed.oldIndustries.map((old) => (
+                      <span key={old} className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 num">
+                        {old} <span className="text-ink-300">→</span> <span className="font-bold text-info">{effectiveCategory}</span>
+                      </span>
+                    ))}
+                  </p>
+                )}
+                {effectiveCategory && (
+                  <p className="text-2xs text-info">The JSON preview above now shows "{effectiveCategory}" as the industry for every lead.</p>
+                )}
+              </div>
             )}
           </div>
         )}

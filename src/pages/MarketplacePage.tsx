@@ -93,14 +93,15 @@ export default function MarketplacePage() {
   /* Per-industry counts for chips */
   const indCounts = useMemo(() => countsQ.data ?? new Map<string, number>(), [countsQ.data])
 
-  /* New arrivals since last visit */
+  /* New arrivals since last visit — based on published_at (real publish
+     events, not import time). */
   useEffect(() => {
     if (!user) return
     const key = `mkt:lastVisit:${user.id}`
     let last = 0
     try { last = Number(localStorage.getItem(key) || 0) } catch { /* ignore */ }
-    void db.countMarketLeads({ publishedOnly: true, userId: user.id, createdAfter: last }).then((n) => {
-      setNewArrivals(last ? n : 0)
+    void db.countMarketLeads({ publishedOnly: true, userId: user.id, publishedAfter: last }).then((n) => {
+      setNewArrivals(n)
       try { localStorage.setItem(key, String(Date.now())) } catch { /* ignore */ }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps

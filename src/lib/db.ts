@@ -38,6 +38,8 @@ export interface MarketLeadQuery {
   allocatedFirst?: boolean
   /** Only leads created after this timestamp (new-arrivals badge). */
   createdAfter?: number
+  /** Only leads published after this timestamp (new-arrivals badge). */
+  publishedAfter?: number
   /** Claims owned by this member. */
   claimedByMine?: boolean
 }
@@ -1189,6 +1191,12 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     }
     if (q.createdAfter) {
       r = r.gte('created_at', new Date(q.createdAfter).toISOString())
+    }
+    if (q.publishedAfter && q.publishedOnly) {
+      r = r.gte('published_at', new Date(q.publishedAfter).toISOString())
+    }
+    if (q.publishedAfter && q.publishedOnly) {
+      r = r.gte('published_at', new Date(q.publishedAfter).toISOString())
     }
     if (q.claimedByMine && q.userId) {
       r = r.eq('claimed_by', q.userId)
