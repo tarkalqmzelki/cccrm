@@ -16,12 +16,31 @@ import type {
   BankCard, BankTransaction, BankTxKind,
   RuleFlow,
   CreditSettings, CreditEntry, RedeemItem, Redemption,
+  MarketplaceIndustry, MarketplaceImport,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
 import type { LanguageTranslations } from './translations'
 import type { PlatformLocale } from './platformLocales'
 
 const iso = () => new Date().toISOString()
+
+export type MarketLeadStatusFilter = 'all' | 'live' | 'draft' | 'locked' | 'allocated' | 'claimed'
+
+export interface MarketLeadQuery {
+  limit: number
+  offset: number
+  search?: string
+  industry?: string
+  status?: MarketLeadStatusFilter
+  /** User shelf: published + unclaimed + (unallocated or mine) */
+  publishedOnly?: boolean
+  userId?: string
+  allocatedFirst?: boolean
+  /** Only leads created after this timestamp (new-arrivals badge). */
+  createdAfter?: number
+  /** Claims owned by this member. */
+  claimedByMine?: boolean
+}
 
 /* ------------------------------------------------------------------ */
 /* Public API  — Supabase only (no demo/mock fallback)                */
@@ -1158,7 +1177,174 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     if (error) throw error
   },
 
-  /* ---------- LEADS MARKETPLACE (schema61) ---------- */
+  /* ---------- LEADS MARKETPLACE 2.0 (schema72) — paged + filtered ---------- */
+
+  async queryMarketLeads(q: MarketLeadQuery): Promise<{ rows: MarketLead[]; total: number }> {
+    const nowIso = new Date().toISOString()
+    let r = supabase!.from('marketplace_leads').select('*', { count: 'exact' })
+
+    if (q.publishedOnly && q.userId) {
+      r = r.eq('published', true).is('claimed_by', null)
+      r = r.or(`allocated_to.is.null,allocated_to.eq.${q.userId}`)
+    }
+    if (q.createdAfter) {
+      r = r.gte('created_at', new Date(q.createdAfter).toISOString())
+    }
+    if (q.claimedByMine && q.userId) {
+      r = r.eq('claimed_by', q.userId)
+    }
+
+    switch (q.status) {
+      case 'live':
+        r = r.eq('published', true).is('claimed_by', null).is('allocated_to', null)
+          .or(`unlock_at.is.null,unlock_at.lte.${new Date().toISOString()}`)
+        break
+      case 'locked':
+        r = r.eq('published', true).is('claimed_by', null).gt('unlock_at', new Date().toISOString())
+        break
+      case 'draft':
+        r = r.eq('published', false).is('claimed_by', null)
+        break
+      case 'allocated':
+        r = r.eq('published', true).is('claimed_by', null).not('allocated_to', 'is', null)
+        break
+      case 'claimed':
+        r = r.not('claimed_by', 'is', null)
+        break
+    }
+
+    if (q.industry) r = r.eq('industry', q.industry)
+
+    const s = (q.search || '').replace(/[%_,]/g, ' ').trim()
+    if (s) {
+      r = r.or(`name.ilike.%${s}%,website.ilike.%${s}%,domain.ilike.%${s}%,address.ilike.%${s}%`)
+    }
+
+    if (q.allocatedFirst) {
+      r = r.order('allocated_to', { ascending: false, nullsFirst: false })
+    }
+    r = r.order('created_at', { ascending: false }).range(q.offset, q.offset + q.limit - 1)
+
+    const { data, count, error } = await r
+    if (error) {
+      console.error('[db.queryMarketLeads]', error.message)
+      return { rows: [], total: 0 }
+    }
+    return { rows: (data || []) as MarketLead[], total: count ?? (data?.length ?? 0) }
+  },
+
+  /** Exact count for a filter (used by stat pills). */
+  async countMarketLeads(q: Omit<MarketLeadQuery, 'limit' | 'offset'>): Promise<number> {
+    const { total } = await db.queryMarketLeads({ ...q, limit: 1, offset: 0 })
+    return total
+  },
+
+  async listMarketIndustries(): Promise<MarketplaceIndustry[]> {
+    const { data, error } = await supabase!
+      .from('marketplace_industries').select('*').order('name', { ascending: true })
+    if (error) return []
+    return (data || []) as MarketplaceIndustry[]
+  },
+
+  async addMarketIndustry(name: string): Promise<void> {
+    const { error } = await supabase!.from('marketplace_industries')
+      .upsert({ name: name.trim() }, { onConflict: 'name' })
+    if (error) throw error
+  },
+
+  /** Rename a category and cascade to all its leads. */
+  async renameMarketIndustry(id: string, newName: string, oldName: string): Promise<void> {
+    const { error: e1 } = await supabase!.from('marketplace_industries')
+      .update({ name: newName.trim() }).eq('id', id)
+    if (e1) throw e1
+    const { error: e2 } = await supabase!.from('marketplace_leads')
+      .update({ industry: newName.trim() }).eq('industry', oldName)
+    if (e2) throw e2
+  },
+
+  /** Merge from-category into to-category, then remove the empty row. */
+  async mergeMarketIndustry(fromName: string, intoName: string): Promise<void> {
+    const { error: e1 } = await supabase!.from('marketplace_leads')
+      .update({ industry: intoName }).eq('industry', fromName)
+    if (e1) throw e1
+    const { error: e2 } = await supabase!.from('marketplace_industries')
+      .delete().eq('name', fromName)
+    if (e2) throw e2
+  },
+
+  async deleteMarketIndustry(name: string): Promise<void> {
+    const { error } = await supabase!.from('marketplace_industries').delete().eq('name', name)
+    if (error) throw error
+  },
+
+  /** Per-industry lead counts. When a scope is given, counts respect the
+   *  same visibility rules as the member shelf. */
+  async countMarketLeadsByIndustry(q: { publishedOnly?: boolean; userId?: string }): Promise<Map<string, number>> {
+    // Loop past the 1000-row cap pulling only the industry column.
+    const PAGE = 1000
+    const counts = new Map<string, number>()
+    let from = 0
+    for (;;) {
+      let r = supabase!.from('marketplace_leads').select('industry').range(from, from + PAGE - 1)
+      if (q.publishedOnly && q.userId) {
+        r = r.eq('published', true).is('claimed_by', null)
+          .or(`allocated_to.is.null,allocated_to.eq.${q.userId}`)
+      }
+      const { data } = await r
+      if (!data || data.length === 0) break
+      for (const row of data) {
+        const ind = (row.industry || '').trim()
+        if (ind) counts.set(ind, (counts.get(ind) || 0) + 1)
+      }
+      if (data.length < PAGE) break
+      from += PAGE
+    }
+    return counts
+  },
+
+  /** Server-side bulk patch over every lead matching a filter
+   *  (used by category focus buttons — works beyond loaded pages). */
+  async bulkUpdateMarketLeadsByFilter(q: {
+    industry?: string
+    excludeIndustry?: string
+    status?: MarketLeadStatusFilter
+    publishedOnly?: boolean
+    userId?: string
+  }, patch: Partial<MarketLead>): Promise<number> {
+    const ids: string[] = []
+    const PAGE = 1000
+    let from = 0
+    for (;;) {
+      const { rows } = await db.queryMarketLeads({ ...q, limit: PAGE, offset: from })
+      if (rows.length === 0) break
+      ids.push(...rows.map((r) => r.id))
+      if (rows.length < PAGE) break
+      from += PAGE
+    }
+    let updated = 0
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500)
+      const { error } = await supabase!.from('marketplace_leads').update(patch).in('id', chunk)
+      if (error) throw error
+      updated += chunk.length
+    }
+    return updated
+  },
+
+  async logMarketplaceImport(count: number, industry: string, importedBy: string): Promise<void> {
+    const { error } = await supabase!.from('marketplace_imports')
+      .insert({ count, industry: industry || '', imported_by: importedBy })
+    if (error) throw error
+  },
+
+  async listMarketplaceImports(): Promise<MarketplaceImport[]> {
+    const { data, error } = await supabase!
+      .from('marketplace_imports').select('*').order('created_at', { ascending: false }).limit(10)
+    if (error) return []
+    return (data || []) as MarketplaceImport[]
+  },
+
+  /* ---------- LEADS MARKETPLACE (schema61 — legacy full fetch) ---------- */
   async listMarketLeads(): Promise<MarketLead[]> {
     const { data, error } = await supabase!
       .from('marketplace_leads').select('*')
@@ -1197,7 +1383,7 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
 
   async bulkUpdateMarketLeads(ids: string[], patch: Partial<MarketLead>): Promise<void> {
     if (!ids.length) return
-    const allowed = ['published', 'unlock_at', 'allocated_to']
+    const allowed = ['published', 'unlock_at', 'allocated_to', 'industry']
     const payload: Record<string, unknown> = { updated_at: iso() }
     for (const k of allowed) if (k in patch) payload[k] = (patch as Record<string, unknown>)[k]
     const { error } = await supabase!.from('marketplace_leads').update(payload).in('id', ids)

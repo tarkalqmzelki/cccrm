@@ -747,6 +747,24 @@ export interface Redemption {
   created_at: string
 }
 
+/* =====================================================================
+ * MARKETPLACE 2.0 (schema72) — saved category library + import history
+ * ===================================================================== */
+
+export interface MarketplaceIndustry {
+  id: string
+  name: string
+  created_at: string
+}
+
+export interface MarketplaceImport {
+  id: string
+  imported_by: string | null
+  count: number
+  industry: string
+  created_at: string
+}
+
 export interface Settings {
   id: number
   l1_threshold: number

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Store, Lock, Copy, Eye, MoreVertical, MapPin, Globe,
-  Sparkles, Search, X, Check,
+  Sparkles, Search, X, ArrowDownToLine, Check,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useAsync } from '../lib/hooks/useAsync'
@@ -21,78 +21,112 @@ import { useToast } from '../context/ToastContext'
 import { openContextMenu, type CtxItem } from '../components/ui/ContextMenu'
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+const PAGE_SIZE = 20
 
 /**
- * Leads Marketplace — a live shelf of companies HQ feeds to the team.
- * Claim one and it becomes YOUR lead on the Leads page instantly.
- * Contact phone stays hidden until you own the lead (then it lives on
- * the lead's page, visible to you and admins only).
+ * Leads Marketplace — member claim shelf. Server-side pagination (20 +
+ * Load more), category filter chips driven by the saved industry
+ * library, and a "new arrivals" nudge since the member's last visit.
  */
 export default function MarketplacePage() {
   const { user } = useAuth()
   const { push } = useToast()
-  const leadsQ = useAsync(async () => db.listMarketLeads(), [])
+
+  const [rows, setRows] = useState<MarketLead[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState('')
+  const [debounced, setDebounced] = useState('')
   const [industry, setIndustry] = useState<string>('all')
   const [preview, setPreview] = useState<MarketLead | null>(null)
   const [claimTarget, setClaimTarget] = useState<MarketLead | null>(null)
-  const [, setTick] = useState(0)
+  const [newArrivals, setNewArrivals] = useState(0)
 
-  const mineCount = useMemo(
-    () => (leadsQ.data || []).filter((l) => l.claimed_by === user?.id).length,
-    [leadsQ.data, user?.id],
+  /* Industry library + live per-category counts */
+  const libQ = useAsync(async () => db.listMarketIndustries(), [])
+  const countsQ = useAsync(
+    async () => (user ? db.countMarketLeadsByIndustry({ publishedOnly: true, userId: user.id }) : new Map()),
+    [user?.id],
   )
-
-  /* Claimed leads leave the marketplace entirely. */
-  const available = useMemo(() => {
-    return (leadsQ.data || []).filter((l) =>
-      l.published && !l.claimed_by && (!l.allocated_to || l.allocated_to === user?.id),
-    )
-  }, [leadsQ.data, user?.id])
-
-  /* Distinct industries (categories) across published shelf */
-  const industries = useMemo(() => {
-    const set = new Set<string>()
-    available.forEach((l) => {
-      const i = (l.industry || '').trim()
-      if (i) set.add(i)
-    })
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [available])
-
-  const industryCount = useMemo(() => {
-    const m = new Map<string, number>()
-    available.forEach((l) => {
-      const i = (l.industry || '').trim()
-      if (i) m.set(i, (m.get(i) || 0) + 1)
-    })
-    return m
-  }, [available])
-
-  const filtered = useMemo(() => {
-    let list = available
-    if (industry !== 'all') list = list.filter((l) => (l.industry || '').trim() === industry)
-    const q = search.toLowerCase().trim()
-    if (!q) return list
-    return list.filter((l) => `${l.name} ${l.industry} ${l.address} ${l.summary}`.toLowerCase().includes(q))
-  }, [available, industry, search])
-
-  const reservedFirst = useMemo(
-    () => [...filtered].sort((a, b) => (b.allocated_to === user?.id ? 1 : 0) - (a.allocated_to === user?.id ? 1 : 0)),
-    [filtered, user?.id],
+  const mineQ = useAsync(
+    async () => (user ? db.countMarketLeads({ claimedByMine: true, userId: user.id }) : 0),
+    [user?.id],
   )
+  const mineCount = mineQ.data || 0
 
-  /* Tick only while a claim countdown is on screen — otherwise the page
-     is perfectly static (no re-renders, no animation restarts). */
+  /* Debounce search */
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search), 350)
+    return () => clearTimeout(t)
+  }, [search])
+
+  /* Paged load */
+  const load = useCallback(async (reset: boolean) => {
+    if (!user) return
+    reset ? setLoading(true) : setLoadingMore(true)
+    const offset = reset ? 0 : rowsRef.current.length
+    const res = await db.queryMarketLeads({
+      limit: PAGE_SIZE,
+      offset,
+      search: debounced,
+      industry: industry === 'all' ? '' : industry,
+      publishedOnly: true,
+      userId: user.id,
+      allocatedFirst: true,
+    })
+    setRows((prev) => (reset ? res.rows : [...prev, ...res.rows]))
+    setTotal(res.total)
+    setLoading(false)
+    setLoadingMore(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, debounced, industry])
+
+  const rowsRef = useRef<MarketLead[]>([])
+  useEffect(() => { rowsRef.current = rows }, [rows])
+
+  useEffect(() => {
+    if (user) void load(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, debounced, industry])
+
+  /* Per-industry counts for chips */
+  const indCounts = useMemo(() => countsQ.data ?? new Map<string, number>(), [countsQ.data])
+
+  /* New arrivals since last visit */
+  useEffect(() => {
+    if (!user) return
+    const key = `mkt:lastVisit:${user.id}`
+    let last = 0
+    try { last = Number(localStorage.getItem(key) || 0) } catch { /* ignore */ }
+    void db.countMarketLeads({ publishedOnly: true, userId: user.id, createdAfter: last }).then((n) => {
+      setNewArrivals(last ? n : 0)
+      try { localStorage.setItem(key, String(Date.now())) } catch { /* ignore */ }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
+
+  /* Tick only while a claim countdown is on screen */
   const hasCountdown = useMemo(
-    () => available.some((l) => l.unlock_at && new Date(l.unlock_at).getTime() > Date.now()),
-    [available],
+    () => rows.some((l) => l.unlock_at && new Date(l.unlock_at).getTime() > Date.now()),
+    [rows],
   )
+  const [, setTick] = useState(0)
   useEffect(() => {
     if (!hasCountdown) return
     const t = setInterval(() => setTick((x) => x + 1), 1000)
     return () => clearInterval(t)
   }, [hasCountdown])
+
+  const hasMore = rows.length < total
+
+  /* Refresh everything after a claim */
+  const refreshAfterClaim = useCallback(() => {
+    void load(true)
+    countsQ.reload()
+    mineQ.reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced, industry])
 
   async function performClaim(l: MarketLead): Promise<void> {
     if (!user) throw new Error('Not signed in')
@@ -102,69 +136,38 @@ export default function MarketplacePage() {
 
     let company: { id: string } | null = null
 
-    // Create first, claim second: if the claim loses a race we simply
-    // delete our own company copy — no stuck half-claimed rows.
     try {
       company = await db.createCompany({
-        name: l.name,
-        website: l.website,
-        domain: l.domain,
-        vat_number: l.vat_number,
-        industry: l.industry,
-        description: l.description,
-        address: l.address,
-        logo_url: l.logo_url,
-        summary: l.summary,
-        phone: l.phone || '',
-        marketplace_source: l.id,
-        created_by: user.id,
+        name: l.name, website: l.website, domain: l.domain, vat_number: l.vat_number,
+        industry: l.industry, description: l.description, address: l.address,
+        logo_url: l.logo_url, summary: l.summary, phone: l.phone || '',
+        marketplace_source: l.id, created_by: user.id,
       })
     } catch (e: any) {
       const msg = String(e?.message ?? '')
-      // Duplicate domain — this marketplace lead collides with a company
-      // that already exists in Leads. Resolve by ownership:
       if (!msg.includes('companies_domain_uniq') && !msg.includes('duplicate key')) throw e
       const companies = await db.listCompanies()
       const existing = companies.find(
         (c) => (c.domain || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim() === normDomain,
       )
       if (existing && existing.created_by === user.id) {
-        // Already the member's own lead — just remove it from the shelf.
         push({ tone: 'info', title: 'Already in your Leads', desc: `"${l.name}" exists on your Leads page — the marketplace entry was linked to it.` })
       } else {
-        // Owned by someone else / unowned: issue the claimant a unique
-        // copy so the lead never becomes dead inventory.
         const suffix = Math.random().toString(36).slice(2, 6)
         company = await db.createCompany({
-          name: l.name,
-          website: l.website,
-          domain: normDomain ? `${normDomain}-${suffix}` : `marketplace-${suffix}`,
-          vat_number: l.vat_number,
-          industry: l.industry,
-          description: l.description,
-          address: l.address,
-          logo_url: l.logo_url,
-          summary: l.summary,
-          phone: l.phone || '',
-          marketplace_source: l.id,
-          created_by: user.id,
+          name: l.name, website: l.website, domain: normDomain ? `${normDomain}-${suffix}` : `marketplace-${suffix}`,
+          vat_number: l.vat_number, industry: l.industry, description: l.description, address: l.address,
+          logo_url: l.logo_url, summary: l.summary, phone: l.phone || '',
+          marketplace_source: l.id, created_by: user.id,
         })
         push({ tone: 'info', title: 'Duplicate domain resolved', desc: 'A company with this domain already existed — your copy uses a unique reference.' })
       }
     }
 
-    // The phone lives where it belongs — inside the Contacts section.
     if (l.phone && company) {
       try {
-        await db.createContact({
-          company_id: company.id,
-          full_name: 'Primary contact',
-          email: '',
-          phone: l.phone,
-          role: 'Marketplace lead',
-          created_by: user.id,
-        })
-      } catch { /* non-fatal — phone is also on the company record */ }
+        await db.createContact({ company_id: company.id, full_name: 'Primary contact', email: '', phone: l.phone, role: 'Marketplace lead', created_by: user.id })
+      } catch { /* non-fatal */ }
     }
 
     try {
@@ -208,10 +211,19 @@ export default function MarketplacePage() {
             {mineCount > 0 && <span className="num font-semibold text-pos"> You've claimed {mineCount}.</span>}
           </p>
         </div>
+        {newArrivals > 0 && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/40 bg-amber-400/15 px-3 py-1.5 text-2xs font-bold text-amber-600 dark:text-amber-300"
+          >
+            <Sparkles size={11} strokeWidth={2.25} /> {newArrivals} new since your last visit
+          </motion.span>
+        )}
       </div>
 
       {/* Search */}
-      <div className="relative mb-5">
+      <div className="relative mb-4">
         <Search size={15} strokeWidth={1.75} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300" />
         <input
           value={search}
@@ -226,64 +238,73 @@ export default function MarketplacePage() {
         )}
       </div>
 
-      {/* Industry category filter */}
-      {industries.length > 0 && (
+      {/* Category chips — saved library + live counts */}
+      {libQ.data && libQ.data.length > 0 && (
         <div className="-mx-1 mb-5 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-          <button
+          <Chip
+            active={industry === 'all'}
             onClick={() => setIndustry('all')}
-            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-              industry === 'all'
-                ? 'border-ink bg-ink text-white'
-                : 'border-line bg-surface text-ink-500 hover:border-ink-200 hover:text-ink'
-            }`}
-          >
-            All <span className="num opacity-60">{available.length}</span>
-          </button>
-          {industries.map((ind) => {
-            const activeChip = industry === ind
-            return (
-              <button
-                key={ind}
-                onClick={() => setIndustry(activeChip ? 'all' : ind)}
-                className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                  activeChip
-                    ? 'border-ink bg-ink text-white'
-                    : 'border-line bg-surface text-ink-500 hover:border-ink-200 hover:text-ink'
-                }`}
-              >
-                {ind} <span className="num opacity-60">{industryCount.get(ind)}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {leadsQ.loading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-52 rounded-2xl" />)}
-        </div>
-      ) : reservedFirst.length === 0 ? (
-        <Card>
-          <EmptyState
-            icon={<Store size={22} strokeWidth={1.5} />}
-            title={available.length === 0 ? 'Shelf is empty right now' : 'No matches'}
-            desc={available.length === 0 ? 'HQ restocks the marketplace regularly — check back soon.' : `Nothing matches "${search}".`}
+            label="All"
+            count={loading ? undefined : total}
           />
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {reservedFirst.map((l, i) => (
-            <MarketCard
-              key={l.id}
-              lead={l}
-              index={i}
-              isMineReservation={l.allocated_to === user?.id}
-              onClaim={() => setClaimTarget(l)}
-              onPreview={() => setPreview(l)}
-              onMenu={(e) => openContextMenu(e, rowActions(l))}
+          {libQ.data.map((ind) => (
+            <Chip
+              key={ind.id}
+              active={industry === ind.name}
+              onClick={() => setIndustry(industry === ind.name ? 'all' : ind.name)}
+              label={ind.name}
+              count={indCounts.get(ind.name)}
             />
           ))}
         </div>
+      )}
+
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-52 rounded-2xl" />)}
+        </div>
+      ) : rows.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<Store size={22} strokeWidth={1.5} />}
+            title={total === 0 ? 'Shelf is empty right now' : 'No matches'}
+            desc={total === 0 ? 'HQ restocks the marketplace regularly — check back soon.' : `Nothing matches${search ? ` "${search}"` : ''}${industry !== 'all' ? ` in ${industry}` : ''}.`}
+          />
+        </Card>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {rows.map((l, i) => (
+              <MarketCard
+                key={l.id}
+                lead={l}
+                index={i % PAGE_SIZE}
+                isMineReservation={l.allocated_to === user?.id}
+                onClaim={() => setClaimTarget(l)}
+                onPreview={() => setPreview(l)}
+                onMenu={(e) => openContextMenu(e, rowActions(l))}
+              />
+            ))}
+          </div>
+
+          {/* Load more */}
+          {rows.length < total && (
+            <div className="mt-6 flex justify-center">
+              <Button
+                variant="secondary"
+                size="lg"
+                disabled={loadingMore}
+                icon={<ArrowDownToLine size={15} strokeWidth={1.75} />}
+                onClick={() => void load(false)}
+              >
+                {loadingMore ? 'Loading…' : `Load more (${total - rows.length} left)`}
+              </Button>
+            </div>
+          )}
+          <p className="mt-3 text-center text-2xs text-ink-300 num">
+            Showing {rows.length} of {total} available leads
+          </p>
+        </>
       )}
 
       {/* Preview modal — contact details stay hidden until claimed */}
@@ -352,7 +373,7 @@ export default function MarketplacePage() {
           userColor={user.avatar_color}
           userAvatar={user.avatar_url}
           onClose={() => setClaimTarget(null)}
-          onDone={() => { setClaimTarget(null); leadsQ.reload() }}
+          onDone={() => { setClaimTarget(null); refreshAfterClaim() }}
           onConfirm={performClaim}
           onError={(msg) => push({ tone: 'error', title: msg.includes('Already claimed') ? 'Too slow — someone claimed it first' : 'Could not claim', desc: msg })}
         />
@@ -362,93 +383,21 @@ export default function MarketplacePage() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Market card — module scope so per-second countdown re-renders never
-   remount it (a nested component identity replays entrance animations
-   on every parent render — the "constant flicker" bug).            */
+/* Category chip                                                       */
 /* ------------------------------------------------------------------ */
-function MarketCard({
-  lead, index, isMineReservation, onClaim, onPreview, onMenu,
-}: {
-  lead: MarketLead
-  index: number
-  isMineReservation: boolean
-  onClaim: () => void
-  onPreview: () => void
-  onMenu: (e: React.MouseEvent) => void
-}) {
-  const state = marketLeadState(lead)
-  const countdown = state === 'locked' ? fmtCountdown(lead.unlock_at) : null
-  const locked = state === 'locked'
-  const glow = locked ? 'rgba(245,158,11,0.22)' : isMineReservation ? 'rgba(168,85,247,0.25)' : 'rgba(34,197,94,0.20)'
-
+function Chip({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count?: number }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: Math.min(index * 0.05, 0.35), ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-ink-900 via-ink-800 to-ink-700 text-white shadow-glass dark:from-[rgb(30,30,30)] dark:via-[rgb(23,23,23)] dark:to-[rgb(38,38,38)]"
+    <button
+      onClick={onClick}
+      className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+        active
+          ? 'border-ink bg-ink text-white'
+          : 'border-line bg-surface text-ink-500 hover:border-ink-200 hover:text-ink'
+      }`}
     >
-      {/* accent glow + sheen */}
-      <div aria-hidden className="pointer-events-none absolute -right-8 -top-12 h-32 w-32 rounded-full blur-3xl" style={{ background: glow }} />
-      {!locked && (
-        <div
-          aria-hidden
-          className="sheen-x pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent"
-          style={{ '--sheen-cycle': '10s' } as React.CSSProperties}
-        />
-      )}
-
-      <div className="relative flex h-full flex-col p-4">
-        <div className="mb-2 flex items-start justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {isMineReservation && (
-              <span className="rounded-full border border-violet-300/40 bg-violet-400/20 px-2 py-0.5 text-2xs font-bold text-violet-100">
-                Reserved for you
-              </span>
-            )}
-            {lead.industry && (
-              <span className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-2xs font-medium text-white/80">
-                {lead.industry}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onMenu(e as unknown as React.MouseEvent) }}
-            title="More actions"
-            className="-mr-1.5 -mt-1 shrink-0 rounded-lg p-1.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-          >
-            <MoreVertical size={16} strokeWidth={1.75} />
-          </button>
-        </div>
-
-        <button onClick={onPreview} className="text-left">
-          <p className="line-clamp-2 text-sm font-bold leading-snug text-white">{lead.name}</p>
-        </button>
-
-        <div className="mt-1.5 space-y-1 text-2xs text-white/55">
-          {lead.address && <p className="truncate">{lead.address}</p>}
-          {lead.summary && <p className="line-clamp-2 leading-relaxed text-white/65">{lead.summary}</p>}
-        </div>
-
-        <div className="mt-auto pt-3">
-          {locked ? (
-            <button
-              disabled
-              className="flex h-9 w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 text-xs font-semibold text-white/70"
-            >
-              <Lock size={13} strokeWidth={1.75} /> Unlocks in {countdown}
-            </button>
-          ) : (
-            <button
-              onClick={onClaim}
-              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-white text-xs font-bold text-[rgb(10,10,10)] transition-all hover:bg-white/90 active:scale-[0.98]"
-            >
-              <Sparkles size={13} strokeWidth={2} /> Claim this lead
-            </button>
-          )}
-        </div>
-      </div>
-    </motion.div>
+      {label}
+      {count !== undefined && <span className="num ml-1.5 opacity-60">{count}</span>}
+    </button>
   )
 }
 
@@ -580,4 +529,93 @@ function fmtCountdown(iso: string | null): string | null {
   if (d > 0) return `${d}d ${h}h`
   if (h > 0) return `${h}h ${m}m`
   return `${m}m ${s}s`
+}
+
+/* ------------------------------------------------------------------ */
+/* Market card — module scope                                          */
+/* ------------------------------------------------------------------ */
+function MarketCard({
+  lead, index, isMineReservation, onClaim, onPreview, onMenu,
+}: {
+  lead: MarketLead
+  index: number
+  isMineReservation: boolean
+  onClaim: () => void
+  onPreview: () => void
+  onMenu: (e: React.MouseEvent) => void
+}) {
+  const state = marketLeadState(lead)
+  const countdown = state === 'locked' ? fmtCountdown(lead.unlock_at) : null
+  const locked = state === 'locked'
+  const glow = locked ? 'rgba(245,158,11,0.22)' : isMineReservation ? 'rgba(168,85,247,0.25)' : 'rgba(34,197,94,0.20)'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: Math.min(index * 0.05, 0.35), ease: [0.22, 1, 0.36, 1] }}
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-ink-900 via-ink-800 to-ink-700 text-white shadow-glass dark:from-[rgb(30,30,30)] dark:via-[rgb(23,23,23)] dark:to-[rgb(38,38,38)]"
+    >
+      {/* accent glow + sheen */}
+      <div aria-hidden className="pointer-events-none absolute -right-8 -top-12 h-32 w-32 rounded-full blur-3xl" style={{ background: glow }} />
+      {!locked && (
+        <div
+          aria-hidden
+          className="sheen-x pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent"
+          style={{ '--sheen-cycle': '10s' } as React.CSSProperties}
+        />
+      )}
+
+      <div className="relative flex h-full flex-col p-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {isMineReservation && (
+              <span className="rounded-full border border-violet-300/40 bg-violet-400/20 px-2 py-0.5 text-2xs font-bold text-violet-100">
+                Reserved for you
+              </span>
+            )}
+            {lead.industry && (
+              <span className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-2xs font-medium text-white/80">
+                {lead.industry}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onMenu(e as unknown as React.MouseEvent) }}
+            title="More actions"
+            className="-mr-1.5 -mt-1 shrink-0 rounded-lg p-1.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <MoreVertical size={16} strokeWidth={1.75} />
+          </button>
+        </div>
+
+        <button onClick={onPreview} className="text-left">
+          <p className="line-clamp-2 text-sm font-bold leading-snug text-white">{lead.name}</p>
+        </button>
+
+        <div className="mt-1.5 space-y-1 text-2xs text-white/55">
+          {lead.address && <p className="truncate">{lead.address}</p>}
+          {lead.summary && <p className="line-clamp-2 leading-relaxed text-white/65">{lead.summary}</p>}
+        </div>
+
+        <div className="mt-auto pt-3">
+          {locked ? (
+            <button
+              disabled
+              className="flex h-9 w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 text-xs font-semibold text-white/70"
+            >
+              <Lock size={13} strokeWidth={1.75} /> Unlocks in {countdown}
+            </button>
+          ) : (
+            <button
+              onClick={onClaim}
+              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-white text-xs font-bold text-[rgb(10,10,10)] transition-all hover:bg-white/90 active:scale-[0.98]"
+            >
+              <Sparkles size={13} strokeWidth={2} /> Claim this lead
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
 }
