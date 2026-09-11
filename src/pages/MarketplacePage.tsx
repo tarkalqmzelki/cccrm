@@ -96,24 +96,65 @@ export default function MarketplacePage() {
 
   async function performClaim(l: MarketLead): Promise<void> {
     if (!user) throw new Error('Not signed in')
+
+    const normDomain = (l.domain || l.website || '')
+      .toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim()
+
+    let company: { id: string } | null = null
+
     // Create first, claim second: if the claim loses a race we simply
     // delete our own company copy — no stuck half-claimed rows.
-    const company = await db.createCompany({
-      name: l.name,
-      website: l.website,
-      domain: l.domain,
-      vat_number: l.vat_number,
-      industry: l.industry,
-      description: l.description,
-      address: l.address,
-      logo_url: l.logo_url,
-      summary: l.summary,
-      phone: l.phone || '',
-      marketplace_source: l.id,
-      created_by: user.id,
-    })
+    try {
+      company = await db.createCompany({
+        name: l.name,
+        website: l.website,
+        domain: l.domain,
+        vat_number: l.vat_number,
+        industry: l.industry,
+        description: l.description,
+        address: l.address,
+        logo_url: l.logo_url,
+        summary: l.summary,
+        phone: l.phone || '',
+        marketplace_source: l.id,
+        created_by: user.id,
+      })
+    } catch (e: any) {
+      const msg = String(e?.message ?? '')
+      // Duplicate domain — this marketplace lead collides with a company
+      // that already exists in Leads. Resolve by ownership:
+      if (!msg.includes('companies_domain_uniq') && !msg.includes('duplicate key')) throw e
+      const companies = await db.listCompanies()
+      const existing = companies.find(
+        (c) => (c.domain || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim() === normDomain,
+      )
+      if (existing && existing.created_by === user.id) {
+        // Already the member's own lead — just remove it from the shelf.
+        push({ tone: 'info', title: 'Already in your Leads', desc: `"${l.name}" exists on your Leads page — the marketplace entry was linked to it.` })
+      } else {
+        // Owned by someone else / unowned: issue the claimant a unique
+        // copy so the lead never becomes dead inventory.
+        const suffix = Math.random().toString(36).slice(2, 6)
+        company = await db.createCompany({
+          name: l.name,
+          website: l.website,
+          domain: normDomain ? `${normDomain}-${suffix}` : `marketplace-${suffix}`,
+          vat_number: l.vat_number,
+          industry: l.industry,
+          description: l.description,
+          address: l.address,
+          logo_url: l.logo_url,
+          summary: l.summary,
+          phone: l.phone || '',
+          marketplace_source: l.id,
+          created_by: user.id,
+        })
+        push({ tone: 'info', title: 'Duplicate domain resolved', desc: 'A company with this domain already existed — your copy uses a unique reference.' })
+      }
+    }
+
     // The phone lives where it belongs — inside the Contacts section.
-    if (l.phone) {
+    if (l.phone && company) {
       try {
         await db.createContact({
           company_id: company.id,
@@ -125,10 +166,11 @@ export default function MarketplacePage() {
         })
       } catch { /* non-fatal — phone is also on the company record */ }
     }
+
     try {
       await db.claimMarketLead(l.id, user.id)
     } catch (e) {
-      try { await db.deleteCompany(company.id) } catch { /* best-effort */ }
+      if (company) { try { await db.deleteCompany(company.id) } catch { /* best-effort */ } }
       throw e
     }
   }
