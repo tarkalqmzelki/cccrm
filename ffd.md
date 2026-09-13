@@ -176,6 +176,20 @@ supabase/
 
 ## 9. Gotchas / lessons (do not re-learn these)
 
+0. **Postgres enum landmines**: `coalesce(x.status,'')` on an enum column
+   (deals.status → deal_status) fails at PLAN time with 22P02
+   `invalid input value for enum deal_status: ""` — regardless of actual
+   values. Always write `coalesce(x.status::text,'')`. schema70/71 fixed
+   the two live instances (sync_deal_payout, notify_admin_deal_review).
+1. Nested component definitions inside a page component remount on every
+   parent render (new function identity) → entrance animations replay,
+   cards "flicker" (hit Challenges + Marketplace). Hoist cards to module
+   scope; pass per-render data via props.
+1b. Gate per-second countdown intervals to run only when a countdown is
+   visible; marketplace/bank ledgers are points now (pts formatter).
+1c. Marketplace claims: duplicate domains resolved in performClaim
+   (own → link; other's → uniquified copy). Admin can Release a claimed
+   lead back to the shelf (unlock icon) when the member deleted it.
 1. Repeating framer animations + per-second re-renders (countdowns) restart
    the animation → use CSS keyframes (`sheen-x`, `mb-sweep`, `.status-ring`).
 2. `layout` prop on cards inside per-second-ticking parents causes translate

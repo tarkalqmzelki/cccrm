@@ -570,6 +570,8 @@ export interface MarketLead {
   allocated_to: string | null
   claimed_by: string | null
   claimed_at: string | null
+  /** When the lead became visible in the marketplace (schema73). */
+  published_at?: string | null
   imported_by: string | null
   created_at: string
   updated_at: string

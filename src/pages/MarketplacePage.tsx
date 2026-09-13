@@ -94,12 +94,16 @@ export default function MarketplacePage() {
   const indCounts = useMemo(() => countsQ.data ?? new Map<string, number>(), [countsQ.data])
 
   /* New arrivals since last visit — based on published_at (real publish
-     events, not import time). */
+     events, not import time). lastVisit also drives the per-card NEW badge. */
+  const [lastVisit, setLastVisit] = useState(0)
   useEffect(() => {
     if (!user) return
     const key = `mkt:lastVisit:${user.id}`
     let last = 0
     try { last = Number(localStorage.getItem(key) || 0) } catch { /* ignore */ }
+    /* First visit: baseline = 7 days ago so recent drops count as new. */
+    if (!last) last = Date.now() - 7 * 86400000
+    setLastVisit(last)
     void db.countMarketLeads({ publishedOnly: true, userId: user.id, publishedAfter: last }).then((n) => {
       setNewArrivals(n)
       try { localStorage.setItem(key, String(Date.now())) } catch { /* ignore */ }
@@ -281,6 +285,7 @@ export default function MarketplacePage() {
                 lead={l}
                 index={i % PAGE_SIZE}
                 isMineReservation={l.allocated_to === user?.id}
+                isNew={!!(l.published_at && lastVisit && new Date(l.published_at).getTime() > lastVisit)}
                 onClaim={() => setClaimTarget(l)}
                 onPreview={() => setPreview(l)}
                 onMenu={(e) => openContextMenu(e, rowActions(l))}
@@ -536,11 +541,12 @@ function fmtCountdown(iso: string | null): string | null {
 /* Market card — module scope                                          */
 /* ------------------------------------------------------------------ */
 function MarketCard({
-  lead, index, isMineReservation, onClaim, onPreview, onMenu,
+  lead, index, isMineReservation, isNew, onClaim, onPreview, onMenu,
 }: {
   lead: MarketLead
   index: number
   isMineReservation: boolean
+  isNew: boolean
   onClaim: () => void
   onPreview: () => void
   onMenu: (e: React.MouseEvent) => void
@@ -570,6 +576,11 @@ function MarketCard({
       <div className="relative flex h-full flex-col p-4">
         <div className="mb-2 flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
+            {isNew && (
+              <span className="rounded-full border border-amber-300/40 bg-amber-400/25 px-2 py-0.5 text-2xs font-black uppercase tracking-wider text-amber-200 shadow-sm">
+                New
+              </span>
+            )}
             {isMineReservation && (
               <span className="rounded-full border border-violet-300/40 bg-violet-400/20 px-2 py-0.5 text-2xs font-bold text-violet-100">
                 Reserved for you

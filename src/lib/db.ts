@@ -1345,6 +1345,14 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     if (error) throw error
   },
 
+  /** Admin releases a claimed lead back to the shelf (e.g. the member
+ *  deleted the company from their Leads page) so someone else can take it. */
+  async releaseMarketClaim(id: string): Promise<void> {
+    const { error } = await supabase!.from('marketplace_leads')
+      .update({ claimed_by: null, claimed_at: null, updated_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
   async listMarketplaceImports(): Promise<MarketplaceImport[]> {
     const { data, error } = await supabase!
       .from('marketplace_imports').select('*').order('created_at', { ascending: false }).limit(10)

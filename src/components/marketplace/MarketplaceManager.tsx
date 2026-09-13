@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Upload, Plus, Pencil, Trash2, Eye, EyeOff, Search, UsersRound,
-  Clock, Store, CheckSquare, XSquare, FileJson, X, Layers,
+  Clock, Store, CheckSquare, XSquare, FileJson, X, Layers, Unlock,
 } from 'lucide-react'
 import { useAsync } from '../../lib/hooks/useAsync'
 import { db } from '../../lib/db'
@@ -209,6 +209,20 @@ export function MarketplaceManager({ adminId }: { adminId: string }) {
     }
   }
 
+  /** Admin releases a claimed lead back to the shelf — e.g. the member
+   *  deleted the company from their Leads page, so someone else can take it. */
+  async function releaseClaim(l: MarketLead) {
+    const who = profileName(l.claimed_by)
+    if (!confirm(`Release "${l.name}"${who ? ` (claimed by ${who})` : ''} back to the marketplace? The member loses the claim.`)) return
+    try {
+      await db.releaseMarketClaim(l.id)
+      push({ tone: 'success', title: 'Lead released', desc: l.published ? 'It is claimable again.' : 'Publish it to make it claimable.' })
+      void load(true)
+    } catch (e: any) {
+      push({ tone: 'error', title: 'Could not release', desc: e?.message })
+    }
+  }
+
   async function toggleFreeze(c: MarketLead) {
     try {
       await db.updateMarketLead(c.id, { published: !c.published })
@@ -392,6 +406,7 @@ export function MarketplaceManager({ adminId }: { adminId: string }) {
               onToggle={() => toggle(l.id)}
               onEdit={() => { setEditTarget(l); setEditOpen(true) }}
               onDelete={() => removeOne(l)}
+              onRelease={() => releaseClaim(l)}
               profileName={profileName}
             />
           ))}
@@ -892,7 +907,7 @@ function fmtCountdown(iso: string | null): string | null {
 }
 
 function MarketRow({
-  lead, index, checked, onToggle, onEdit, onDelete, profileName,
+  lead, index, checked, onToggle, onEdit, onDelete, onRelease, profileName,
 }: {
   lead: MarketLead
   index: number
@@ -900,6 +915,7 @@ function MarketRow({
   onToggle: () => void
   onEdit: () => void
   onDelete: () => void
+  onRelease: () => void
   profileName: (id: string | null) => string | null
 }) {
   const state = marketLeadState(lead)
@@ -940,6 +956,15 @@ function MarketRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
+        {state === 'claimed' && (
+          <button
+            onClick={onRelease}
+            title="Release claim — make claimable by others again"
+            className="rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-posBg hover:text-pos"
+          >
+            <Unlock size={14} strokeWidth={1.75} />
+          </button>
+        )}
         <button onClick={onEdit} title="Edit" className="rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-ink-50 hover:text-ink dark:hover:bg-[rgb(28,28,28)]">
           <Pencil size={14} strokeWidth={1.75} />
         </button>
