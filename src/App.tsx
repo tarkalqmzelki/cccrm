@@ -27,6 +27,7 @@ import GivenAccess from './pages/GivenAccess'
 import Challenges from './pages/Challenges'
 import MarketplacePage from './pages/MarketplacePage'
 import Bank from './pages/Bank'
+import ClientExperience from './pages/ClientExperience'
 /* The world-map bundle (topojson + d3-geo) is heavy — load it on demand. */
 const MapPage = lazy(() => import('./pages/MapPage'))
 import type { Role } from './lib/types'
@@ -111,6 +112,8 @@ export default function App() {
         {/* Public invoice verification — what a phone scans via the QR
             code on a printed invoice.  Outside the Protected wrapper. */}
         <Route path="/invoice/verify/:id" element={<InvoiceVerifyPage />} />
+        {/* Public client experience — token-scoped, outside auth */}
+        <Route path="/experience/:token" element={<ClientExperience />} />
         <Route
           path="/*"
           element={

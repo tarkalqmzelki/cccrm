@@ -767,6 +767,81 @@ export interface MarketplaceImport {
   created_at: string
 }
 
+/* =====================================================================
+ * CLIENT EXPERIENCE (schema74) — admin-side types
+ * ===================================================================== */
+
+export interface ClientExperienceAccess {
+  id: string
+  deal_id: string
+  token_hash: string
+  client_name: string
+  client_email: string
+  status: 'active' | 'revoked'
+  expires_at: string
+  revoked_at: string | null
+  created_by: string | null
+  created_at: string
+  last_accessed_at: string | null
+  access_count: number
+  accepted_at: string | null
+  declined_at: string | null
+  decline_reason: string
+  contract_id: string | null
+  contract_accepted_at: string | null
+  onboarding: Record<string, unknown>
+  onboarding_status: 'not_started' | 'in_progress' | 'completed'
+}
+
+export interface CxMilestone {
+  id: string
+  deal_id: string
+  title: string
+  description: string
+  status: 'planned' | 'in_progress' | 'waiting_client' | 'completed'
+  position: number
+  start_date: string | null
+  end_date: string | null
+  completed_at: string | null
+  revision_note: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CxEvent {
+  id: string
+  access_id: string
+  event_type: string
+  actor_type: 'client' | 'system' | 'seller'
+  entity_type: string
+  entity_id: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface CxMessage {
+  id: string
+  access_id: string
+  sender: 'client' | 'seller'
+  body: string
+  read_by_seller: boolean
+  read_by_client: boolean
+  created_at: string
+}
+
+export interface CxFile {
+  id: string
+  access_id: string
+  deal_id: string | null
+  name: string
+  storage_path: string
+  size_bytes: number
+  mime: string
+  uploaded_by: 'client' | 'seller'
+  created_at: string
+}
+
 export interface Settings {
   id: number
   l1_threshold: number

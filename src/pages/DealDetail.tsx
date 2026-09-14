@@ -16,6 +16,7 @@ import { Skeleton } from '../components/ui/Skeleton'
 import { Dropdown } from '../components/ui/Dropdown'
 import { Modal } from '../components/ui/Modal'
 import { DealModal } from '../components/DealModal'
+import { ClientExperienceManager } from '../components/experience/ClientExperienceManager'
 import { PageContainer } from '../components/layout/AppShell'
 import { useToast } from '../context/ToastContext'
 import type { Deal, Profile, Payout, Referral, DealStatus } from '../lib/types'
@@ -107,7 +108,7 @@ export default function DealDetail() {
         <ArrowLeft size={15} strokeWidth={1.75} /> Deals
       </button>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 border-b border-line pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-ink-50 text-ink">
             <Building2 size={20} strokeWidth={1.75} />
@@ -126,7 +127,7 @@ export default function DealDetail() {
               <Dropdown
                 width={200}
                 trigger={
-                  <div className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-line px-3 h-10 text-sm font-medium hover:bg-ink-50 transition-colors sm:w-auto">
+                  <div className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-4 text-sm font-medium hover:bg-ink-50 transition-colors sm:w-auto">
                     Set status <ChevronDown size={14} strokeWidth={1.75} className="text-ink-400" />
                   </div>
                 }
@@ -152,6 +153,9 @@ export default function DealDetail() {
           )}
         </div>
       </div>
+
+      {/* Client Experience — admin only */}
+      {isAdmin && <div className="mt-6"><ClientExperienceManager deal={deal} adminId={user?.id || ''} /></div>}
 
       <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">

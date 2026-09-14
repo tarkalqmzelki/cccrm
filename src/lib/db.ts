@@ -17,6 +17,7 @@ import type {
   RuleFlow,
   CreditSettings, CreditEntry, RedeemItem, Redemption,
   MarketplaceIndustry, MarketplaceImport,
+  ClientExperienceAccess, CxMilestone, CxEvent, CxMessage, CxFile,
 } from './types'
 import { DEFAULT_INVOICE_SETTINGS, DEFAULT_SETTINGS, DEFAULT_DESIGN_SETTINGS } from './types'
 import type { LanguageTranslations } from './translations'
@@ -25,6 +26,18 @@ import type { PlatformLocale } from './platformLocales'
 const iso = () => new Date().toISOString()
 
 export type MarketLeadStatusFilter = 'all' | 'live' | 'draft' | 'locked' | 'allocated' | 'claimed'
+
+/* ---------- client experience token helpers ---------- */
+function base64url(bytes: Uint8Array): string {
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
 
 export interface MarketLeadQuery {
   limit: number
@@ -1179,7 +1192,165 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     if (error) throw error
   },
 
-  /* ---------- LEADS MARKETPLACE 2.0 (schema72) — paged + filtered ---------- */
+  /* ---------- CLIENT EXPERIENCE (schema74) — admin side ---------- */
+
+  async getCxByDeal(dealId: string): Promise<ClientExperienceAccess | null> {
+    const { data, error } = await supabase!
+      .from('client_experience_access').select('*').eq('deal_id', dealId).maybeSingle()
+    if (error || !data) return null
+    return data as ClientExperienceAccess
+  },
+
+  /** Admin creates the experience for an approved deal. Returns the raw
+   *  token (shown once); only its SHA-256 hash is stored. */
+  async createCx(dealId: string, opts: { expiresInDays?: number; clientName?: string; clientEmail?: string }, createdBy: string): Promise<string> {
+    const bytes = new Uint8Array(32)
+    crypto.getRandomValues(bytes)
+    const token = base64url(bytes)
+    const digest = await sha256Hex(token)
+    const expires = new Date(Date.now() + (opts.expiresInDays ?? 30) * 86400000).toISOString()
+    const { error } = await supabase!.from('client_experience_access').insert({
+      deal_id: dealId,
+      token_hash: digest,
+      client_name: opts.clientName ?? '',
+      client_email: opts.clientEmail ?? '',
+      status: 'active',
+      expires_at: expires,
+      created_by: createdBy,
+    })
+    if (error) throw error
+    return token
+  },
+
+  /** Renew = brand-new token; the old one is dead instantly. */
+  async renewCx(id: string, expiresInDays: number): Promise<string> {
+    const bytes = new Uint8Array(32)
+    crypto.getRandomValues(bytes)
+    const token = base64url(bytes)
+    const digest = await sha256Hex(token)
+    const expires = new Date(Date.now() + expiresInDays * 86400000).toISOString()
+    const { error } = await supabase!.from('client_experience_access')
+      .update({ token_hash: digest, expires_at: expires, status: 'active', revoked_at: null })
+      .eq('id', id)
+    if (error) throw error
+    return token
+  },
+
+  async revokeCx(id: string): Promise<void> {
+    const { error } = await supabase!.from('client_experience_access')
+      .update({ status: 'revoked', revoked_at: iso() }).eq('id', id)
+    if (error) throw error
+  },
+
+  async setCxClientInfo(id: string, clientName: string, clientEmail: string): Promise<void> {
+    const { error } = await supabase!.from('client_experience_access')
+      .update({ client_name: clientName, client_email: clientEmail }).eq('id', id)
+    if (error) throw error
+  },
+
+  async setCxContract(id: string, contractId: string | null): Promise<void> {
+    const { error } = await supabase!.from('client_experience_access')
+      .update({ contract_id: contractId }).eq('id', id)
+    if (error) throw error
+  },
+
+  async listCxEvents(dealId: string): Promise<CxEvent[]> {
+    const access = await db.getCxByDeal(dealId)
+    if (!access) return []
+    const { data, error } = await supabase!
+      .from('client_experience_events').select('*')
+      .eq('access_id', access.id).order('created_at', { ascending: false }).limit(40)
+    if (error) return []
+    return (data || []) as CxEvent[]
+  },
+
+  async listCxMessages(dealId: string): Promise<CxMessage[]> {
+    const access = await db.getCxByDeal(dealId)
+    if (!access) return []
+    const { data, error } = await supabase!
+      .from('client_experience_messages').select('*')
+      .eq('access_id', access.id).order('created_at', { ascending: true })
+    if (error) return []
+    return (data || []) as CxMessage[]
+  },
+
+  async sendCxMessageSeller(dealId: string, accessId: string, body: string): Promise<void> {
+    const { error } = await supabase!.from('client_experience_messages').insert({
+      access_id: accessId, sender: 'seller', body, read_by_seller: true,
+    })
+    if (error) throw error
+  },
+
+  async markCxMessagesRead(dealId: string): Promise<void> {
+    const access = await db.getCxByDeal(dealId)
+    if (!access) return
+    const { error } = await supabase!.from('client_experience_messages')
+      .update({ read_by_seller: true }).eq('access_id', access.id).eq('sender', 'client').eq('read_by_seller', false)
+    if (error) throw error
+  },
+
+  async listCxMilestones(dealId: string): Promise<CxMilestone[]> {
+    const { data, error } = await supabase!
+      .from('cx_milestones').select('*').eq('deal_id', dealId).order('position', { ascending: true })
+    if (error) return []
+    return (data || []) as CxMilestone[]
+  },
+
+  async createCxMilestone(m: { deal_id: string; title: string; description?: string; position?: number; start_date?: string | null; end_date?: string | null }, createdBy: string): Promise<void> {
+    const { error } = await supabase!.from('cx_milestones').insert({
+      deal_id: m.deal_id, title: m.title, description: m.description || '',
+      position: m.position ?? 0, start_date: m.start_date ?? null, end_date: m.end_date ?? null,
+      created_by: createdBy,
+    })
+    if (error) throw error
+  },
+
+  async updateCxMilestone(id: string, patch: Partial<CxMilestone>): Promise<void> {
+    const allowed = ['title', 'description', 'status', 'position', 'start_date', 'end_date', 'completed_at']
+    const payload: Record<string, unknown> = { updated_at: iso() }
+    for (const k of allowed) if (k in patch) payload[k] = (patch as Record<string, unknown>)[k]
+    const { error } = await supabase!.from('cx_milestones').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteCxMilestone(id: string): Promise<void> {
+    const { error } = await supabase!.from('cx_milestones').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  async listCxFiles(dealId: string): Promise<CxFile[]> {
+    const access = await db.getCxByDeal(dealId)
+    if (!access) return []
+    const { data, error } = await supabase!
+      .from('cx_files').select('*').eq('access_id', access.id).order('created_at', { ascending: false })
+    if (error) return []
+    return (data || []) as CxFile[]
+  },
+
+  /** Seller-side download URL (admin session). */
+  async getCxFileUrl(path: string): Promise<string> {
+    const { data } = await supabase!.storage.from('client-files').createSignedUrl(path, 600)
+    if (!data?.signedUrl) throw new Error('Could not create download URL')
+    return data.signedUrl
+  },
+
+  /** Admin uploads a file to the client experience. */
+  async uploadCxFile(dealId: string, accessId: string, file: File): Promise<void> {
+    const path = `${accessId}/${Date.now()}-${file.name.replace(/[^\w.\- ]/g, '_')}`
+    const { error: upErr } = await supabase!.storage.from('client-files').upload(path, file, { upsert: false })
+    if (upErr) throw upErr
+    const { data: frow, error: fErr } = await supabase!.from('cx_files').insert({
+      access_id: accessId, deal_id: dealId, name: file.name, storage_path: path,
+      size_bytes: file.size, mime: file.type || 'application/octet-stream', uploaded_by: 'seller',
+    }).select().single()
+    if (fErr) throw fErr
+    await supabase!.from('client_experience_events').insert({
+      access_id: accessId, event_type: 'file_shared', actor_type: 'seller',
+      entity_type: 'file', entity_id: frow.id, metadata: { name: file.name },
+    })
+  },
+
+/* ---------- LEADS MARKETPLACE 2.0 (schema72) — paged + filtered ---------- */
 
   async queryMarketLeads(q: MarketLeadQuery): Promise<{ rows: MarketLead[]; total: number }> {
     const nowIso = new Date().toISOString()
@@ -1345,8 +1516,16 @@ async updateSystemStatus(id: string, patch: Partial<Pick<SystemStatus, 'status' 
     if (error) throw error
   },
 
+/** Admin diagnostic: validate a raw token server-side and see exactly
+   *  why it matches or doesn't (hash comparison, row status, totals). */
+  async debugCx(token: string): Promise<{ match: boolean; computed_hash: string; row: { status: string; expires_at: string; revoked_at: string | null } | null; total_rows: number }> {
+    const { data, error } = await supabase!.rpc('cx_debug', { p_token: token })
+    if (error) throw error
+    return (data ?? { match: false, computed_hash: '', row: null, total_rows: 0 }) as any
+  },
+
   /** Admin releases a claimed lead back to the shelf (e.g. the member
- *  deleted the company from their Leads page) so someone else can take it. */
+   *  deleted the company from their Leads page) so someone else can take it. */
   async releaseMarketClaim(id: string): Promise<void> {
     const { error } = await supabase!.from('marketplace_leads')
       .update({ claimed_by: null, claimed_at: null, updated_at: iso() }).eq('id', id)
